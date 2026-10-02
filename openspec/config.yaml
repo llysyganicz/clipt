@@ -1,0 +1,56 @@
+schema: spec-driven
+
+context: |
+  Product: clipt, a minimal, keyboard-driven TUI note-taking app.
+  Notes are markdown files in ONE flat directory (no subfolders); file name == note name.
+  Modes: fuzzy finder (by file name), preview (rendered markdown), edit (insert-only, no vim normal mode).
+  Finder: enter opens match in preview; no match creates "<query>.md" (name as typed) and enters edit;
+  ctrl+o changes the notes directory.
+  Preview: acts on the open note: edit, rename (refuses to overwrite an existing note),
+  delete with y/n confirmation (then returns to finder).
+  Saving: auto-save on leaving edit mode (Esc); no explicit save command.
+  Config: ~/.config/clipt/config.toml (XDG); notes dir chosen in-app on first run.
+  Tech stack: Go, Bubble Tea (TUI), Bubbles textarea/textinput, Glamour (markdown render),
+  Lip Gloss (styling), sahilm/fuzzy (matching), BurntSushi/toml (config).
+  Module path: github.com/llysyganicz/clipt
+  VCS: Jujutsu (jj), colocated with git.
+  Out of scope (v1): content search, folders, tags, sync, vim normal mode.
+
+rules:
+  proposal:
+    - Keep scope minimal; state explicit non-goals
+  design:
+    - Model each mode as its own Bubble Tea model; root model routes between them
+  tasks:
+    - Every task touching file I/O includes a test using a temp dir
+
+# Project context (optional)
+# This is shown to AI when creating artifacts.
+# Add your tech stack, conventions, style guides, domain knowledge, etc.
+# Example:
+#   context: |
+#     Tech stack: TypeScript, React, Node.js
+#     We use conventional commits
+#     Domain: e-commerce platform
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always include a "Non-goals" section
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
+
+# Per-operation guidance (optional)
+# Add advisory guidance for how apply and archive work should be conducted.
+# This is separate from artifact rules above.
+# Example:
+#   operations:
+#     apply:
+#       guidance:
+#         - Keep test summaries concise
+#     archive:
+#       guidance:
+#         - Summarize the archive outcome before finishing
