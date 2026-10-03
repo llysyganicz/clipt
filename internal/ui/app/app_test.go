@@ -60,7 +60,7 @@ func TestSwitcherToggle(t *testing.T) {
 	dir := mkdir(t, "c", "b", "a") // a newest
 	m := New(dir)
 	m, _ = press(m, tea.KeyEnter) // open a
-	if m.mode != modeNote || m.current.Name != "a" {
+	if m.mode != modePreview || m.current.Name != "a" {
 		t.Fatalf("mode=%v current=%v", m.mode, m.current)
 	}
 	m, _ = press(m, tea.KeyEsc) // back to finder
@@ -90,7 +90,7 @@ func TestEscWithCurrentShowsPreview(t *testing.T) {
 	m, _ = press(m, tea.KeyEnter)
 	m, _ = press(m, tea.KeyEsc)     // note -> finder
 	m, quit := press(m, tea.KeyEsc) // finder -> preview of current
-	if quit || m.mode != modeNote || m.current == nil {
+	if quit || m.mode != modePreview || m.current == nil {
 		t.Errorf("mode=%v quit=%v", m.mode, quit)
 	}
 }
@@ -119,7 +119,7 @@ func TestCreateOpensNote(t *testing.T) {
 	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("new")})
 	m = nm.(Model)
 	m, _ = press(m, tea.KeyEnter)
-	if m.mode != modeNote || m.current == nil || m.current.Name != "new" {
+	if m.mode != modeEdit || m.current == nil || m.current.Name != "new" {
 		t.Errorf("mode=%v current=%v", m.mode, m.current)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "new.md")); err != nil {
@@ -201,7 +201,7 @@ func TestSameDirKeepsCurrent(t *testing.T) {
 }
 
 func TestOpenAndCreatedSetCurrent(t *testing.T) {
-	m := New(mkdir(t))
+	m := New(mkdir(t, "o", "c"))
 	m, _ = feed(m, finder.OpenNoteMsg{Note: notes.Note{Name: "o"}})
 	if m.current.Name != "o" {
 		t.Error("OpenNoteMsg")
@@ -237,5 +237,119 @@ func run(cmd tea.Cmd) tea.Msg {
 		return m
 	case <-time.After(20 * time.Millisecond):
 		return nil
+	}
+}
+
+// deliver sends msg and re-delivers resulting app-level messages until quiet.
+func deliver(m Model, msg tea.Msg) (Model, bool) {
+	quit := false
+	for msg != nil {
+		var out tea.Msg
+		m, out = feed(m, msg)
+		if _, ok := out.(tea.QuitMsg); ok {
+			quit = true
+			out = nil
+		}
+		msg = out
+	}
+	return m, quit
+}
+
+func rune1(r rune) tea.Msg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}} }
+
+func TestRenameUpdatesCurrent(t *testing.T) {
+	dir := mkdir(t, "todo")
+	m := New(dir)
+	m, _ = press(m, tea.KeyEnter)
+	m, _ = deliver(m, rune1('r'))
+	m, _ = deliver(m, rune1('2'))
+	m, _ = deliver(m, tea.KeyMsg{Type: tea.KeyEnter})
+	if m.mode != modePreview || m.current == nil || m.current.Name != "todo2" {
+		t.Fatalf("mode=%v current=%v", m.mode, m.current)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "todo2.md")); err != nil {
+		t.Error(err)
+	}
+	m, _ = press(m, tea.KeyEsc) // back to finder, renamed note hidden
+	if m.mode != modeFinder || m.finder.Query() != "" {
+		t.Fatalf("mode=%v query=%q", m.mode, m.finder.Query())
+	}
+	for _, r := range m.finder.Rows() {
+		if !r.IsCreate() && r.Note.Name == "todo2" {
+			t.Error("current note listed")
+		}
+	}
+}
+
+func TestDeleteClearsCurrent(t *testing.T) {
+	dir := mkdir(t, "keep", "todo") // todo newest
+	m := New(dir)
+	m, _ = press(m, tea.KeyEnter)
+	m, _ = deliver(m, rune1('d'))
+	m, _ = deliver(m, rune1('y'))
+	if m.mode != modeFinder || m.current != nil || m.finder.Query() != "" {
+		t.Fatalf("mode=%v current=%v", m.mode, m.current)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "todo.md")); !os.IsNotExist(err) {
+		t.Error("todo.md still exists")
+	}
+	rows := m.finder.Rows()
+	if len(rows) != 1 || rows[0].Note.Name != "keep" {
+		t.Errorf("rows = %v", rows)
+	}
+	if _, quit := press(m, tea.KeyEsc); !quit {
+		t.Error("esc should quit with no current note")
+	}
+}
+
+func TestPreviewBackEmptyQuery(t *testing.T) {
+	m := New(mkdir(t, "a", "b"))
+	m, _ = press(m, tea.KeyEnter)
+	m, _ = press(m, tea.KeyEsc) // finder
+	nm, _ := m.Update(rune1('x'))
+	m = nm.(Model)
+	m, _ = press(m, tea.KeyEsc) // preview of current
+	m, _ = press(m, tea.KeyEsc) // finder again
+	if m.mode != modeFinder || m.finder.Query() != "" || m.current == nil {
+		t.Errorf("mode=%v query=%q current=%v", m.mode, m.finder.Query(), m.current)
+	}
+}
+
+func TestUnreadableNoteReturnsToFinder(t *testing.T) {
+	dir := mkdir(t, "a", "b")
+	m := New(dir)
+	os.Remove(filepath.Join(dir, "b.md")) // listed, then removed
+	m, _ = press(m, tea.KeyEnter)
+	if m.mode != modeFinder || m.current != nil {
+		t.Fatalf("mode=%v current=%v", m.mode, m.current)
+	}
+	if v := m.View(); !strings.Contains(v, "cannot read") || !strings.Contains(v, "b") {
+		t.Errorf("view lacks error:\n%s", v)
+	}
+}
+
+func TestEditReturnsToPreview(t *testing.T) {
+	m := New(mkdir(t, "a"))
+	m, _ = press(m, tea.KeyEnter)
+	m, _ = deliver(m, rune1('e'))
+	if m.mode != modeEdit {
+		t.Fatalf("mode=%v", m.mode)
+	}
+	m, _ = press(m, tea.KeyEsc)
+	if m.mode != modePreview || m.current == nil || m.current.Name != "a" {
+		t.Errorf("mode=%v current=%v", m.mode, m.current)
+	}
+}
+
+func TestResizeReachesPreview(t *testing.T) {
+	m := New(mkdir(t, "a"))
+	m, _ = feed(m, tea.WindowSizeMsg{Width: 60, Height: 12})
+	m, _ = press(m, tea.KeyEnter)
+	if got := strings.Count(m.View(), "\n") + 1; got != 12 {
+		t.Errorf("preview height = %d, want 12", got)
+	}
+	m, _ = feed(m, tea.WindowSizeMsg{Width: 60, Height: 8})
+	if got := strings.Count(m.View(), "\n") + 1; got != 8 {
+		t.Errorf("after resize height = %d, want 8", got)
 	}
 }

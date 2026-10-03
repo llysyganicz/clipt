@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -50,5 +51,16 @@ func TestNoColorLiteralsOutsideTheme(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestMarkdownRenders(t *testing.T) {
+	r, err := glamour.NewTermRenderer(glamour.WithStyles(Markdown), glamour.WithWordWrap(40))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := r.Render("# h\n\n```go\nfmt.Println(1)\n```\n")
+	if err != nil || strings.TrimSpace(out) == "" {
+		t.Fatalf("render = %q, %v", out, err)
 	}
 }

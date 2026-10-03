@@ -11,6 +11,7 @@ import (
 	"github.com/llysyganicz/clipt/internal/notes"
 	"github.com/llysyganicz/clipt/internal/ui/finder"
 	"github.com/llysyganicz/clipt/internal/ui/picker"
+	"github.com/llysyganicz/clipt/internal/ui/preview"
 )
 
 type mode int
@@ -18,7 +19,8 @@ type mode int
 const (
 	modePicker mode = iota
 	modeFinder
-	modeNote // placeholder for preview/edit
+	modePreview
+	modeEdit // placeholder until the edit mode lands
 )
 
 // Model is the root model.
@@ -28,10 +30,12 @@ type Model struct {
 	current    *notes.Note
 	pickerFrom picker.Origin
 
-	picker picker.Model
-	finder finder.Model
-	note   placeholder
-	height int
+	picker  picker.Model
+	finder  finder.Model
+	preview preview.Model
+	edit    placeholder
+	width   int
+	height  int
 }
 
 // New starts in the finder over dir.
@@ -74,15 +78,31 @@ func (m Model) store() notes.Store { return notes.Store{Dir: m.dir} }
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.height = msg.Height
+		m.width, m.height = msg.Width, msg.Height
 		nf, _ := m.finder.Update(msg)
 		m.finder = nf.(finder.Model)
+		if m.mode == modePreview {
+			npv, _ := m.preview.Update(msg)
+			m.preview = npv.(preview.Model)
+		}
 		return m, nil
 
 	case finder.OpenNoteMsg:
-		return m.openNote(msg.Note), nil
+		return m.showPreview(msg.Note)
 	case finder.NoteCreatedMsg:
-		return m.openNote(msg.Note), nil
+		return m.openEdit(msg.Note), nil
+
+	case preview.BackMsg:
+		return m.toFinder()
+	case preview.EditMsg:
+		return m.openEdit(msg.Note), nil
+	case preview.RenamedMsg:
+		n := msg.Note
+		m.current = &n
+		return m, nil
+	case preview.DeletedMsg:
+		m.current = nil
+		return m.toFinder()
 
 	case finder.ChangeDirMsg:
 		m.pickerFrom = picker.Finder
@@ -104,9 +124,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case noteBackMsg:
-		m.finder = m.newFinder("")
-		m.mode = modeFinder
-		return m, m.finder.Init()
+		if m.current == nil {
+			return m.toFinder()
+		}
+		return m.showPreview(*m.current)
 	}
 
 	var cmd tea.Cmd
@@ -119,10 +140,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var nm tea.Model
 		nm, cmd = m.finder.Update(msg)
 		m.finder = nm.(finder.Model)
-	case modeNote:
+	case modePreview:
 		var nm tea.Model
-		nm, cmd = m.note.Update(msg)
-		m.note = nm.(placeholder)
+		nm, cmd = m.preview.Update(msg)
+		m.preview = nm.(preview.Model)
+	case modeEdit:
+		var nm tea.Model
+		nm, cmd = m.edit.Update(msg)
+		m.edit = nm.(placeholder)
 	}
 	return m, cmd
 }
@@ -136,10 +161,37 @@ func (m Model) newFinder(query string) finder.Model {
 	return f
 }
 
-func (m Model) openNote(n notes.Note) Model {
+// toFinder enters the finder with an empty query.
+func (m Model) toFinder() (tea.Model, tea.Cmd) {
+	m.finder = m.newFinder("")
+	m.mode = modeFinder
+	return m, m.finder.Init()
+}
+
+// showPreview makes n the current note and opens its preview. When the note
+// cannot be read the finder stays open with an error and no current note.
+func (m Model) showPreview(n notes.Note) (tea.Model, tea.Cmd) {
+	pv, err := preview.New(m.store(), n)
+	if err != nil {
+		m.current = nil
+		m.finder = m.finder.WithCurrent(nil, fmt.Sprintf("cannot read %q", n.Name))
+		m.mode = modeFinder
+		return m, nil
+	}
+	if m.width > 0 && m.height > 0 {
+		npv, _ := pv.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
+		pv = npv.(preview.Model)
+	}
 	m.current = &n
-	m.note = placeholder{name: n.Name}
-	m.mode = modeNote
+	m.preview = pv
+	m.mode = modePreview
+	return m, nil
+}
+
+func (m Model) openEdit(n notes.Note) Model {
+	m.current = &n
+	m.edit = placeholder{name: n.Name}
+	m.mode = modeEdit
 	return m
 }
 
@@ -153,9 +205,7 @@ func (m Model) back() (tea.Model, tea.Cmd) {
 		m.finder = m.finder.WithCurrent(nil, fmt.Sprintf("note %q no longer exists", name))
 		return m, nil
 	}
-	m.note = placeholder{name: m.current.Name}
-	m.mode = modeNote
-	return m, nil
+	return m.showPreview(*m.current)
 }
 
 func (m Model) dirAccepted(dir string) (tea.Model, tea.Cmd) {
@@ -173,8 +223,10 @@ func (m Model) View() string {
 	switch m.mode {
 	case modePicker:
 		return m.picker.View()
-	case modeNote:
-		return m.note.View()
+	case modePreview:
+		return m.preview.View()
+	case modeEdit:
+		return m.edit.View()
 	}
 	return m.finder.View()
 }

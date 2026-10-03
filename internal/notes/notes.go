@@ -85,3 +85,32 @@ func (s Store) Create(name string) error {
 	}
 	return f.Close()
 }
+
+// Read returns the content of the note.
+func (s Store) Read(name string) (string, error) {
+	b, err := os.ReadFile(filepath.Join(s.Dir, name+ext))
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+// Rename renames a note. It validates the new name, does nothing when the
+// name is unchanged and never overwrites an existing note.
+func (s Store) Rename(oldName, newName string) error {
+	if err := ValidateName(newName); err != nil {
+		return err
+	}
+	if oldName == newName {
+		return nil
+	}
+	if s.Exists(newName) {
+		return fmt.Errorf("note %q already exists", newName)
+	}
+	return os.Rename(filepath.Join(s.Dir, oldName+ext), filepath.Join(s.Dir, newName+ext))
+}
+
+// Delete removes the note file.
+func (s Store) Delete(name string) error {
+	return os.Remove(filepath.Join(s.Dir, name+ext))
+}

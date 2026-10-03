@@ -6,11 +6,11 @@ import (
 	"github.com/llysyganicz/clipt/internal/ui/theme"
 )
 
-// noteBackMsg is emitted by the placeholder on Esc.
+// noteBackMsg is emitted by the edit placeholder on Esc.
 type noteBackMsg struct{}
 
-// placeholder stands in for preview and edit until their change lands. It
-// shows the note name and returns to the finder on Esc.
+// placeholder stands in for edit until its change lands. It shows the note
+// name and returns to preview on Esc.
 type placeholder struct{ name string }
 
 func (p placeholder) Init() tea.Cmd { return nil }
@@ -28,5 +28,5 @@ func (p placeholder) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (p placeholder) View() string {
-	return theme.Prompt.Render(p.name) + "\n" + theme.Hint.Render("esc back")
+	return theme.Prompt.Render(p.name+" (edit)") + "\n" + theme.Hint.Render("esc back")
 }

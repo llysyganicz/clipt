@@ -109,3 +109,80 @@ func TestCreateReadOnlyDir(t *testing.T) {
 		t.Error("Create succeeded on read-only dir")
 	}
 }
+
+func write(t *testing.T, dir, name, content string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRead(t *testing.T) {
+	dir := t.TempDir()
+	s := Store{Dir: dir}
+	write(t, dir, "a.md", "# hi\n")
+	write(t, dir, "empty.md", "")
+	if got, err := s.Read("a"); err != nil || got != "# hi\n" {
+		t.Errorf("Read(a) = %q, %v", got, err)
+	}
+	if got, err := s.Read("empty"); err != nil || got != "" {
+		t.Errorf("Read(empty) = %q, %v", got, err)
+	}
+	if _, err := s.Read("missing"); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("Read(missing) err = %v", err)
+	}
+}
+
+func TestRename(t *testing.T) {
+	dir := t.TempDir()
+	s := Store{Dir: dir}
+	write(t, dir, "a.md", "A")
+	write(t, dir, "b.md", "B")
+
+	if err := s.Rename("a", "c"); err != nil {
+		t.Fatalf("Rename: %v", err)
+	}
+	if s.Exists("a") || !s.Exists("c") {
+		t.Error("rename did not move the file")
+	}
+	if got, _ := s.Read("c"); got != "A" {
+		t.Errorf("content = %q", got)
+	}
+
+	if err := s.Rename("c", "c"); err != nil || !s.Exists("c") {
+		t.Errorf("same name: err=%v exists=%v", err, s.Exists("c"))
+	}
+
+	if err := s.Rename("c", "b"); err == nil {
+		t.Error("rename onto existing note accepted")
+	}
+	if got, _ := s.Read("b"); got != "B" {
+		t.Errorf("b overwritten: %q", got)
+	}
+	if !s.Exists("c") {
+		t.Error("c lost after refused rename")
+	}
+
+	if err := s.Rename("c", "x/y"); err == nil {
+		t.Error("invalid name accepted")
+	}
+	if err := s.Rename("missing", "z"); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("missing source err = %v", err)
+	}
+}
+
+func TestDelete(t *testing.T) {
+	dir := t.TempDir()
+	s := Store{Dir: dir}
+	write(t, dir, "a.md", "A")
+	write(t, dir, "b.md", "B")
+	if err := s.Delete("a"); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if s.Exists("a") || !s.Exists("b") {
+		t.Error("delete touched the wrong files")
+	}
+	if err := s.Delete("a"); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("Delete(missing) err = %v", err)
+	}
+}
