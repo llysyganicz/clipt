@@ -133,6 +133,71 @@ func TestRead(t *testing.T) {
 	}
 }
 
+func TestNormalize(t *testing.T) {
+	cases := map[string]string{
+		"":          "\n",
+		"a":         "a\n",
+		"a\n":       "a\n",
+		"a\n\n\n":   "a\n",
+		"\n\n":      "\n",
+		"a\n\nb\n":  "a\n\nb\n",
+		"a\n \n":    "a\n \n",
+		"a\r\n\r\n": "a\r\n\r\n",
+	}
+	for in, want := range cases {
+		if got := Normalize(in); got != want {
+			t.Errorf("Normalize(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestWrite(t *testing.T) {
+	dir := t.TempDir()
+	s := Store{Dir: dir}
+	p := filepath.Join(dir, "todo.md")
+
+	if err := s.Write("todo", "one\n"); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if b, _ := os.ReadFile(p); string(b) != "one\n" {
+		t.Errorf("created content = %q", b)
+	}
+
+	if err := s.Write("todo", "two\n"); err != nil {
+		t.Fatalf("overwrite: %v", err)
+	}
+	if b, _ := os.ReadFile(p); string(b) != "two\n" {
+		t.Errorf("overwritten content = %q", b)
+	}
+
+	if err := os.Remove(p); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Write("todo", "three\n"); err != nil {
+		t.Fatalf("recreate: %v", err)
+	}
+	if b, _ := os.ReadFile(p); string(b) != "three\n" {
+		t.Errorf("recreated content = %q", b)
+	}
+}
+
+func TestWriteReadOnlyDir(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions")
+	}
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(dir, 0o755) })
+	if err := (Store{Dir: dir}).Write("x", "x\n"); err == nil {
+		t.Error("Write succeeded on read-only dir")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "x.md")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("x.md stat = %v, want not exist", err)
+	}
+}
+
 func TestRename(t *testing.T) {
 	dir := t.TempDir()
 	s := Store{Dir: dir}

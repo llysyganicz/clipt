@@ -95,6 +95,18 @@ func (s Store) Read(name string) (string, error) {
 	return string(b), nil
 }
 
+// Normalize returns content in the on-disk form clipt writes: trailing
+// newlines trimmed and exactly one appended.
+func Normalize(content string) string {
+	return strings.TrimRight(content, "\n") + "\n"
+}
+
+// Write writes content to <name>.md in place, creating the file when it is
+// missing and overwriting it otherwise. It does not normalize the content.
+func (s Store) Write(name, content string) error {
+	return os.WriteFile(filepath.Join(s.Dir, name+ext), []byte(content), 0o644)
+}
+
 // Rename renames a note. It validates the new name, does nothing when the
 // name is unchanged and never overwrites an existing note.
 func (s Store) Rename(oldName, newName string) error {

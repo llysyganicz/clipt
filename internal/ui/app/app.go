@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/llysyganicz/clipt/internal/notes"
+	"github.com/llysyganicz/clipt/internal/ui/editor"
 	"github.com/llysyganicz/clipt/internal/ui/finder"
 	"github.com/llysyganicz/clipt/internal/ui/picker"
 	"github.com/llysyganicz/clipt/internal/ui/preview"
@@ -20,7 +21,7 @@ const (
 	modePicker mode = iota
 	modeFinder
 	modePreview
-	modeEdit // placeholder until the edit mode lands
+	modeEdit
 )
 
 // Model is the root model.
@@ -33,7 +34,7 @@ type Model struct {
 	picker  picker.Model
 	finder  finder.Model
 	preview preview.Model
-	edit    placeholder
+	edit    editor.Model
 	width   int
 	height  int
 }
@@ -81,21 +82,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 		nf, _ := m.finder.Update(msg)
 		m.finder = nf.(finder.Model)
-		if m.mode == modePreview {
+		switch m.mode {
+		case modePreview:
 			npv, _ := m.preview.Update(msg)
 			m.preview = npv.(preview.Model)
+		case modeEdit:
+			ned, _ := m.edit.Update(msg)
+			m.edit = ned.(editor.Model)
 		}
 		return m, nil
 
 	case finder.OpenNoteMsg:
 		return m.showPreview(msg.Note)
 	case finder.NoteCreatedMsg:
-		return m.openEdit(msg.Note), nil
+		return m.openEdit(msg.Note)
 
 	case preview.BackMsg:
 		return m.toFinder()
 	case preview.EditMsg:
-		return m.openEdit(msg.Note), nil
+		return m.openEdit(msg.Note)
 	case preview.RenamedMsg:
 		n := msg.Note
 		m.current = &n
@@ -123,7 +128,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.mode = modeFinder
 		return m, nil
 
-	case noteBackMsg:
+	case editor.DoneMsg:
 		if m.current == nil {
 			return m.toFinder()
 		}
@@ -147,7 +152,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case modeEdit:
 		var nm tea.Model
 		nm, cmd = m.edit.Update(msg)
-		m.edit = nm.(placeholder)
+		m.edit = nm.(editor.Model)
 	}
 	return m, cmd
 }
@@ -188,11 +193,24 @@ func (m Model) showPreview(n notes.Note) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) openEdit(n notes.Note) Model {
+// openEdit makes n the current note and opens the editor on it. When the note
+// cannot be read the finder stays open with an error and no current note.
+func (m Model) openEdit(n notes.Note) (tea.Model, tea.Cmd) {
+	ed, err := editor.New(m.store(), n)
+	if err != nil {
+		m.current = nil
+		m.finder = m.finder.WithCurrent(nil, fmt.Sprintf("cannot read %q", n.Name))
+		m.mode = modeFinder
+		return m, nil
+	}
+	if m.width > 0 && m.height > 0 {
+		ned, _ := ed.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
+		ed = ned.(editor.Model)
+	}
 	m.current = &n
-	m.edit = placeholder{name: n.Name}
+	m.edit = ed
 	m.mode = modeEdit
-	return m
+	return m, ed.Init()
 }
 
 func (m Model) back() (tea.Model, tea.Cmd) {

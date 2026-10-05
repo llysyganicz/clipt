@@ -335,9 +335,62 @@ func TestEditReturnsToPreview(t *testing.T) {
 	if m.mode != modeEdit {
 		t.Fatalf("mode=%v", m.mode)
 	}
+	if v := m.View(); !strings.Contains(v, "esc save & back") {
+		t.Errorf("editor view lacks hint:\n%s", v)
+	}
 	m, _ = press(m, tea.KeyEsc)
 	if m.mode != modePreview || m.current == nil || m.current.Name != "a" {
 		t.Errorf("mode=%v current=%v", m.mode, m.current)
+	}
+}
+
+func TestCreateTypeEscShowsPreview(t *testing.T) {
+	dir := mkdir(t)
+	m := New(dir)
+	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("ideas")})
+	m = nm.(Model)
+	m, _ = press(m, tea.KeyEnter)
+	if m.mode != modeEdit {
+		t.Fatalf("mode=%v", m.mode)
+	}
+	m, _ = deliver(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("# Brainstorm")})
+	m, _ = press(m, tea.KeyEsc)
+	if m.mode != modePreview || m.current == nil || m.current.Name != "ideas" {
+		t.Fatalf("mode=%v current=%v", m.mode, m.current)
+	}
+	if v := m.View(); !strings.Contains(v, "Brainstorm") || !strings.Contains(v, "ideas") {
+		t.Errorf("preview lacks typed content or name:\n%s", v)
+	}
+	if b, err := os.ReadFile(filepath.Join(dir, "ideas.md")); err != nil || string(b) != "# Brainstorm\n" {
+		t.Errorf("ideas.md = %q, %v", b, err)
+	}
+}
+
+func TestEditUnreadableReturnsToFinder(t *testing.T) {
+	dir := mkdir(t, "a")
+	m := New(dir)
+	m, _ = press(m, tea.KeyEnter)
+	os.Remove(filepath.Join(dir, "a.md"))
+	m, _ = deliver(m, rune1('e'))
+	if m.mode != modeFinder || m.current != nil {
+		t.Fatalf("mode=%v current=%v", m.mode, m.current)
+	}
+	if v := m.View(); !strings.Contains(v, "cannot read") {
+		t.Errorf("view lacks error:\n%s", v)
+	}
+}
+
+func TestResizeReachesEditor(t *testing.T) {
+	m := New(mkdir(t, "a"))
+	m, _ = feed(m, tea.WindowSizeMsg{Width: 60, Height: 12})
+	m, _ = press(m, tea.KeyEnter)
+	m, _ = deliver(m, rune1('e'))
+	if got := strings.Count(m.View(), "\n") + 1; got != 12 {
+		t.Errorf("editor height = %d, want 12", got)
+	}
+	m, _ = feed(m, tea.WindowSizeMsg{Width: 60, Height: 8})
+	if got := strings.Count(m.View(), "\n") + 1; got != 8 {
+		t.Errorf("after resize height = %d, want 8", got)
 	}
 }
 

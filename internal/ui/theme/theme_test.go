@@ -24,6 +24,21 @@ func TestStylesRender(t *testing.T) {
 	}
 }
 
+func TestEditorStylesRender(t *testing.T) {
+	focused, blurred := EditorStyles()
+	for name, s := range map[string]lipgloss.Style{
+		"focused.LineNumber": focused.LineNumber, "focused.CursorLineNumber": focused.CursorLineNumber,
+		"focused.Text": focused.Text, "blurred.LineNumber": blurred.LineNumber,
+	} {
+		if s.Render("x") == "" {
+			t.Errorf("%s rendered an empty string", name)
+		}
+	}
+	if focused.CursorLine.GetBackground() != (lipgloss.NoColor{}) {
+		t.Error("cursor line has a background")
+	}
+}
+
 func TestNoColorLiteralsOutsideTheme(t *testing.T) {
 	hex := regexp.MustCompile(`#[0-9a-fA-F]{6}\b`)
 	root := filepath.Join("..", "..", "..")
