@@ -35,7 +35,6 @@ checksum:
 
 changelog:
   use: git
-  sort: asc
   filters:
     exclude:
       - "^Merge "

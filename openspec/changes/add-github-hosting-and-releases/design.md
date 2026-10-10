@@ -60,7 +60,9 @@ Config outline (`version: 2`):
   [README.md]`. `{{ .Version }}` is the tag without `v`, giving the names in
   the spec.
 - `checksum: {name_template: checksums.txt}` (SHA-256 is the default).
-- `changelog: {use: git, sort: asc, filters: {exclude: ["^Merge "]}}`.
+- `changelog: {use: git, filters: {exclude: ["^Merge "]}}`. No `sort`: the
+  key sorts entries by message text, not by date, so leaving it out keeps
+  git's own order, newest first, which the spec states.
 - `release: {github: {owner: llysyganicz, name: clipt}, mode: replace,
   prerelease: false, draft: false}`. The repository is named explicitly
   because `goreleaser check` and snapshot builds otherwise need a git remote
@@ -106,7 +108,7 @@ fails before Go is even installed. Keep the check in the workflow.
 - `jj bookmark create main -r <head>` puts `main` on the current head.
 - `jj git remote add origin https://github.com/llysyganicz/clipt.git`
   matches the `https` protocol `gh` is configured for.
-- `jj git push --bookmark main --allow-new` pushes; GitHub makes the first
+- `jj git push --bookmark main` pushes; GitHub makes the first
   pushed branch the default, so `main` becomes the default branch without a
   settings call. Verify with `gh repo view --json defaultBranchRef`.
 

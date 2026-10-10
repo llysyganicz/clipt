@@ -20,13 +20,13 @@
 
 ## 5. Commit and host on GitHub
 
-- [ ] 5.1 Run `gofmt -l .`, `go vet ./...` and `go test ./...` to confirm nothing regressed, then `jj commit -m "Add README, release pipeline and GitHub hosting"` and verify `jj status` shows a clean working copy and `jj log` shows the new commit as `@-`
-- [ ] 5.2 Run `jj bookmark create main -r @-` and verify `jj bookmark list` shows `main` at that commit
-- [ ] 5.3 Run `gh repo create llysyganicz/clipt --private --description "Minimal, keyboard-driven TUI note-taking app"` and verify `gh repo view llysyganicz/clipt --json visibility,isEmpty` reports `PRIVATE` and empty
-- [ ] 5.4 Run `jj git remote add origin https://github.com/llysyganicz/clipt.git` then `jj git push --bookmark main --allow-new` and verify `gh repo view llysyganicz/clipt --json defaultBranchRef` reports `main`, `gh api repos/llysyganicz/clipt/contents/README.md` succeeds and `gh workflow list --repo llysyganicz/clipt` lists the release workflow
+- [x] 5.1 Run `gofmt -l .`, `go vet ./...` and `go test ./...` to confirm nothing regressed, then `jj commit -m "Add README, release pipeline and GitHub hosting"` and verify `jj status` shows a clean working copy and `jj log` shows the new commit as `@-`
+- [x] 5.2 Run `jj bookmark create main -r @-` and verify `jj bookmark list` shows `main` at that commit
+- [x] 5.3 Run `gh repo create llysyganicz/clipt --private --description "Minimal, keyboard-driven TUI note-taking app"` and verify `gh repo view llysyganicz/clipt --json visibility,isEmpty` reports `PRIVATE` and empty
+- [x] 5.4 Run `jj git remote add origin https://github.com/llysyganicz/clipt.git` then `jj git push --bookmark main` and verify `gh repo view llysyganicz/clipt --json defaultBranchRef` reports `main`, `gh api repos/llysyganicz/clipt/contents/README.md` succeeds and `gh workflow list --repo llysyganicz/clipt` lists the release workflow
 
 ## 6. First release
 
-- [ ] 6.1 With the user's go-ahead on the version number, run `jj tag set v0.1.0 -r main` and `jj git push --tag v0.1.0`, then watch the run with `gh run watch` and verify `gh run list --workflow release.yml` shows it succeeded
-- [ ] 6.2 Verify `gh release view v0.1.0 --json assets,isDraft,isPrerelease` lists `clipt_0.1.0_linux_amd64.tar.gz`, `clipt_0.1.0_windows_amd64.zip` and `checksums.txt`, with draft and pre-release both false, and that the release notes list the repository's commits
-- [ ] 6.3 Download the Linux amd64 asset and `checksums.txt` with `gh release download v0.1.0` into a temp dir, verify `sha256sum -c` passes for it, extract and confirm the `clipt` binary is executable and statically linked
+- [x] 6.1 With the user's go-ahead on the version number, run `jj tag set v0.1.0 -r main` and `jj git push --tag v0.1.0`, then watch the run with `gh run watch` and verify `gh run list --workflow release.yml` shows it succeeded
+- [x] 6.2 Verify `gh release view v0.1.0 --json assets,isDraft,isPrerelease` lists `clipt_0.1.0_linux_amd64.tar.gz`, `clipt_0.1.0_windows_amd64.zip` and `checksums.txt`, with draft and pre-release both false, and that the release notes list the repository's commits
+- [x] 6.3 Download the Linux amd64 asset and `checksums.txt` with `gh release download v0.1.0` into a temp dir, verify `sha256sum -c` passes for it, extract and confirm the `clipt` binary is executable and statically linked

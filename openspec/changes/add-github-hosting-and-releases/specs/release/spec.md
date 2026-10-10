@@ -93,7 +93,7 @@ contain `checksums.txt` listing the SHA-256 sum of every archive.
 On success the run SHALL publish a GitHub Release on the repository that is
 named after the tag, is not a draft and is not marked as a pre-release, with
 release notes listing the commit messages between the previous `vX.Y.Z` tag
-and this one, oldest first, excluding merge commits. For the first tag the
+and this one, newest first, excluding merge commits. For the first tag the
 notes SHALL list all commits.
 
 #### Scenario: Second release
