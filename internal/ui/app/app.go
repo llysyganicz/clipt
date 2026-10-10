@@ -9,10 +9,12 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/llysyganicz/clipt/internal/notes"
+	"github.com/llysyganicz/clipt/internal/templates"
 	"github.com/llysyganicz/clipt/internal/ui/editor"
 	"github.com/llysyganicz/clipt/internal/ui/finder"
 	"github.com/llysyganicz/clipt/internal/ui/picker"
 	"github.com/llysyganicz/clipt/internal/ui/preview"
+	"github.com/llysyganicz/clipt/internal/ui/tmpl"
 )
 
 type mode int
@@ -22,6 +24,7 @@ const (
 	modeFinder
 	modePreview
 	modeEdit
+	modeTemplate // template insert: picker and form over the kept editor
 )
 
 // Model is the root model.
@@ -35,6 +38,7 @@ type Model struct {
 	finder  finder.Model
 	preview preview.Model
 	edit    editor.Model
+	tmpl    tmpl.Model
 	width   int
 	height  int
 }
@@ -75,6 +79,8 @@ func (m Model) Init() tea.Cmd {
 
 func (m Model) store() notes.Store { return notes.Store{Dir: m.dir} }
 
+func (m Model) templatesStore() notes.Store { return templates.Store(m.dir) }
+
 // Update implements tea.Model.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -89,13 +95,31 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case modeEdit:
 			ned, _ := m.edit.Update(msg)
 			m.edit = ned.(editor.Model)
+		case modeTemplate:
+			// The editor is kept behind the insert mode and must be the
+			// right size when it reappears.
+			ned, _ := m.edit.Update(msg)
+			m.edit = ned.(editor.Model)
+			nt, _ := m.tmpl.Update(msg)
+			m.tmpl = nt.(tmpl.Model)
 		}
 		return m, nil
 
 	case finder.OpenNoteMsg:
+		if msg.Scope == finder.ScopeTemplates {
+			return m.openTemplate(msg.Note)
+		}
 		return m.showPreview(msg.Note)
 	case finder.NoteCreatedMsg:
+		if msg.Scope == finder.ScopeTemplates {
+			return m.openTemplate(msg.Note)
+		}
 		return m.openEdit(msg.Note)
+	case finder.ToggleScopeMsg:
+		if m.finder.Scope() == finder.ScopeTemplates {
+			return m.toFinder()
+		}
+		return m.toTemplatesFinder()
 
 	case preview.BackMsg:
 		return m.toFinder()
@@ -116,6 +140,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.picker.Init()
 
 	case finder.BackMsg:
+		if m.finder.Scope() == finder.ScopeTemplates {
+			return m.toFinder()
+		}
 		return m.back()
 
 	case picker.DirAcceptedMsg:
@@ -125,14 +152,36 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.pickerFrom == picker.Startup {
 			return m, tea.Quit
 		}
+		if m.finder.Scope() == finder.ScopeTemplates {
+			return m.toFinder()
+		}
 		m.mode = modeFinder
 		return m, nil
 
 	case editor.DoneMsg:
+		if msg.Template {
+			return m.toTemplatesFinder()
+		}
 		if m.current == nil {
 			return m.toFinder()
 		}
 		return m.showPreview(*m.current)
+	case editor.InsertTemplateMsg:
+		m.tmpl = tmpl.New(m.templatesStore())
+		if m.width > 0 && m.height > 0 {
+			nt, _ := m.tmpl.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
+			m.tmpl = nt.(tmpl.Model)
+		}
+		m.mode = modeTemplate
+		return m, m.tmpl.Init()
+
+	case tmpl.InsertMsg:
+		m.edit = m.edit.Insert(msg.Text)
+		m.mode = modeEdit
+		return m, nil
+	case tmpl.CancelMsg:
+		m.mode = modeEdit
+		return m, nil
 	}
 
 	var cmd tea.Cmd
@@ -153,12 +202,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var nm tea.Model
 		nm, cmd = m.edit.Update(msg)
 		m.edit = nm.(editor.Model)
+	case modeTemplate:
+		var nm tea.Model
+		nm, cmd = m.tmpl.Update(msg)
+		m.tmpl = nm.(tmpl.Model)
 	}
 	return m, cmd
 }
 
 func (m Model) newFinder(query string) finder.Model {
-	f := finder.New(m.store(), m.current, query)
+	return m.sized(finder.New(m.store(), m.current, query))
+}
+
+func (m Model) newTemplatesFinder() finder.Model {
+	return m.sized(finder.NewTemplates(m.templatesStore(), ""))
+}
+
+func (m Model) sized(f finder.Model) finder.Model {
 	if m.height > 0 {
 		nf, _ := f.Update(tea.WindowSizeMsg{Height: m.height})
 		f = nf.(finder.Model)
@@ -166,9 +226,16 @@ func (m Model) newFinder(query string) finder.Model {
 	return f
 }
 
-// toFinder enters the finder with an empty query.
+// toFinder enters the finder in notes scope with an empty query.
 func (m Model) toFinder() (tea.Model, tea.Cmd) {
 	m.finder = m.newFinder("")
+	m.mode = modeFinder
+	return m, m.finder.Init()
+}
+
+// toTemplatesFinder enters the finder in template scope with an empty query.
+func (m Model) toTemplatesFinder() (tea.Model, tea.Cmd) {
+	m.finder = m.newTemplatesFinder()
 	m.mode = modeFinder
 	return m, m.finder.Init()
 }
@@ -213,6 +280,25 @@ func (m Model) openEdit(n notes.Note) (tea.Model, tea.Cmd) {
 	return m, ed.Init()
 }
 
+// openTemplate opens the editor on a template. The current note is not
+// touched; when the template cannot be read the finder stays in template
+// scope with an error.
+func (m Model) openTemplate(n notes.Note) (tea.Model, tea.Cmd) {
+	ed, err := editor.NewTemplate(m.templatesStore(), n)
+	if err != nil {
+		m.finder = m.finder.WithCurrent(nil, fmt.Sprintf("cannot read %q", n.Name))
+		m.mode = modeFinder
+		return m, nil
+	}
+	if m.width > 0 && m.height > 0 {
+		ned, _ := ed.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
+		ed = ned.(editor.Model)
+	}
+	m.edit = ed
+	m.mode = modeEdit
+	return m, ed.Init()
+}
+
 func (m Model) back() (tea.Model, tea.Cmd) {
 	if m.current == nil {
 		return m, tea.Quit
@@ -245,6 +331,8 @@ func (m Model) View() string {
 		return m.preview.View()
 	case modeEdit:
 		return m.edit.View()
+	case modeTemplate:
+		return m.tmpl.View()
 	}
 	return m.finder.View()
 }

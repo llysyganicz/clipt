@@ -3,7 +3,8 @@ schema: spec-driven
 context: |
   Product: clipt, a minimal, keyboard-driven TUI note-taking app.
   Notes are markdown files in ONE flat directory (no subfolders); file name == note name.
-  Modes: fuzzy finder (by file name), preview (rendered markdown), edit (insert-only, no vim normal mode).
+  Modes: fuzzy finder (by file name), preview (rendered markdown), edit (insert-only, no vim normal mode),
+  template insert (picker + form, entered from edit with ctrl+t).
   Finder: lists notes by mtime (newest first), hides the current note, fuzzy-matches the query
   literally against names (no .md handling), and appends a last "Create <query>" row when the
   query is non-empty and no note has that exact name. Enter on a note opens preview; enter on the
@@ -14,6 +15,14 @@ context: |
   Preview: acts on the open note: edit, rename (refuses to overwrite an existing note),
   delete with y/n confirmation (then returns to finder).
   Saving: auto-save on leaving edit mode (Esc); no explicit save command.
+  Templates: markdown files in <notes_dir>/.templates (never listed as notes). Optional YAML front
+  matter between --- fences with a "form" list of fields (name, label, type: text | number (default 0)
+  | option (options list, default first)); the body uses {{name}} placeholders, expanded literally
+  in one pass. Finder toggles a template scope with ctrl+t (Enter opens the template straight in
+  edit, create row writes a skeleton, Esc returns to notes scope); templates never become the
+  current note. In edit, ctrl+t opens the template picker then the form and inserts the expanded
+  body at the cursor; Esc anywhere in insert mode returns to edit unchanged. TOML front matter and
+  nested templates are out of scope.
   Config: clipt/config.toml under the platform config dir (os.UserConfigDir: XDG on Linux,
   %AppData% on Windows, ~/Library/Application Support on macOS); single key notes_dir.
   Notes dir chosen in-app via a single path input with ~ expansion on first run or when the
@@ -21,7 +30,8 @@ context: |
   Platforms: Linux, Windows, macOS via platform-neutral std APIs. Development and tests run on
   Linux only; Windows/macOS get a manual pass after v1, fixes land as separate changes.
   Tech stack: Go, Bubble Tea (TUI), Bubbles textarea/textinput, Glamour (markdown render),
-  Lip Gloss (styling), BurntSushi/toml (config). Fuzzy matching is an in-house case-insensitive
+  Lip Gloss (styling), BurntSushi/toml (config), goccy/go-yaml (template front matter). Fuzzy
+  matching is an in-house case-insensitive
   subsequence match that keeps mtime order (no scoring, no library).
   Theme: gruvbox dark palette, all styles in one theme package; a config override is a later change.
   Module path: github.com/llysyganicz/clipt

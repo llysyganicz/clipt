@@ -6,6 +6,7 @@ package editor
 import (
 	"strings"
 
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -14,13 +15,19 @@ import (
 	"github.com/llysyganicz/clipt/internal/ui/theme"
 )
 
-// DoneMsg is emitted on Esc once the note is saved (or was unchanged).
-type DoneMsg struct{}
+// DoneMsg is emitted on Esc once the file is saved (or was unchanged).
+// Template says whether a template rather than a note was being edited.
+type DoneMsg struct{ Template bool }
+
+// InsertTemplateMsg is emitted on ctrl+t while editing a note: the root
+// should open the template picker and hand the result to Insert.
+type InsertTemplateMsg struct{}
 
 const (
 	defaultWidth  = 80
 	defaultHeight = 24
-	hints         = "esc save & back"
+	hints         = "esc save & back · ctrl+t template"
+	templateHints = "esc save & back"
 )
 
 // repositionMsg is a no-op message sent through the text area so it scrolls
@@ -31,6 +38,7 @@ type repositionMsg struct{}
 type Model struct {
 	store    notes.Store
 	note     notes.Note
+	template bool
 	ta       textarea.Model
 	baseline string
 	width    int
@@ -42,6 +50,16 @@ type Model struct {
 // It fails when the note cannot be read so the caller can fall back to the
 // finder.
 func New(store notes.Store, note notes.Note) (Model, error) {
+	return load(store, note, false)
+}
+
+// NewTemplate is New for a template: store is the templates store, ctrl+t
+// does nothing, and DoneMsg reports Template.
+func NewTemplate(store notes.Store, note notes.Note) (Model, error) {
+	return load(store, note, true)
+}
+
+func load(store notes.Store, note notes.Note, template bool) (Model, error) {
 	content, err := store.Read(note.Name)
 	if err != nil {
 		return Model{}, err
@@ -58,6 +76,8 @@ func New(store notes.Store, note notes.Note) (Model, error) {
 	ta.MaxHeight = 0
 	ta.MaxWidth = 0
 	ta.KeyMap = textarea.DefaultKeyMap
+	// ctrl+t means templates everywhere; never let the text area transpose.
+	ta.KeyMap.TransposeCharacterBackward = key.NewBinding(key.WithDisabled())
 	ta.FocusedStyle, ta.BlurredStyle = theme.EditorStyles()
 	ta.Focus()
 	ta.SetValue(content)
@@ -65,6 +85,7 @@ func New(store notes.Store, note notes.Note) (Model, error) {
 	m := Model{
 		store:    store,
 		note:     note,
+		template: template,
 		ta:       ta,
 		baseline: notes.Normalize(ta.Value()),
 	}
@@ -121,11 +142,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case tea.KeyEsc:
 			return m.save()
+		case tea.KeyCtrlT:
+			if m.template {
+				return m, nil
+			}
+			return m, func() tea.Msg { return InsertTemplateMsg{} }
 		}
 	}
 	var cmd tea.Cmd
 	m.ta, cmd = m.ta.Update(msg)
 	return m, cmd
+}
+
+// Insert inserts text at the cursor as if typed, leaves the cursor after it
+// and scrolls the view to it.
+func (m Model) Insert(text string) Model {
+	m.ta.InsertString(text)
+	m.scrollToCursor()
+	return m
 }
 
 // save writes the note when its content changed since it was loaded and
@@ -139,14 +173,20 @@ func (m Model) save() (tea.Model, tea.Cmd) {
 		}
 		m.baseline = now
 	}
-	return m, func() tea.Msg { return DoneMsg{} }
+	return m, func() tea.Msg { return DoneMsg{Template: m.template} }
 }
 
-// statusBar renders the bottom line: hints left, note name right.
+// statusBar renders the bottom line: hints left, the note name (or
+// "template: <name>") right.
 func (m Model) statusBar() string {
 	left := theme.Hint.Render(hints)
+	label := m.note.Name
+	if m.template {
+		left = theme.Hint.Render(templateHints)
+		label = "template: " + m.note.Name
+	}
 	avail := m.width - lipgloss.Width(left) - 1
-	name := []rune(m.note.Name)
+	name := []rune(label)
 	if avail <= 0 {
 		return left
 	}

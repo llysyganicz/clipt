@@ -406,3 +406,275 @@ func TestResizeReachesPreview(t *testing.T) {
 		t.Errorf("after resize height = %d, want 8", got)
 	}
 }
+
+// addTemplates writes templates under dir/.templates (later names are newer).
+func addTemplates(t *testing.T, dir string, files map[string]string, order ...string) {
+	t.Helper()
+	tdir := filepath.Join(dir, ".templates")
+	if err := os.MkdirAll(tdir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	for i, n := range order {
+		p := filepath.Join(tdir, n+".md")
+		if err := os.WriteFile(p, []byte(files[n]), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		mt := base.Add(time.Duration(i) * time.Hour)
+		os.Chtimes(p, mt, mt)
+	}
+}
+
+func typeRunes(m Model, s string) Model {
+	for _, r := range s {
+		m, _ = deliver(m, rune1(r))
+	}
+	return m
+}
+
+func TestFinderScopeToggle(t *testing.T) {
+	dir := mkdir(t, "todo")
+	addTemplates(t, dir, map[string]string{"meeting": "# m\n"}, "meeting")
+	m := New(dir)
+	m = typeRunes(m, "to")
+	m, _ = press(m, tea.KeyCtrlT)
+	if m.mode != modeFinder || m.finder.Scope() != finder.ScopeTemplates || m.finder.Query() != "" {
+		t.Fatalf("mode=%v scope=%v query=%q", m.mode, m.finder.Scope(), m.finder.Query())
+	}
+	rows := m.finder.Rows()
+	if len(rows) != 1 || rows[0].Note.Name != "meeting" {
+		t.Errorf("template rows = %v", rows)
+	}
+	if v := m.View(); !strings.Contains(v, "templates> ") {
+		t.Errorf("view lacks the template prompt:\n%s", v)
+	}
+	m, _ = press(m, tea.KeyCtrlT)
+	if m.finder.Scope() != finder.ScopeNotes || m.finder.Query() != "" {
+		t.Errorf("scope=%v query=%q after toggling back", m.finder.Scope(), m.finder.Query())
+	}
+	if rows := m.finder.Rows(); len(rows) != 1 || rows[0].Note.Name != "todo" {
+		t.Errorf("note rows = %v", rows)
+	}
+}
+
+func TestTemplateScopeEscReturnsToNotes(t *testing.T) {
+	m := New(mkdir(t, "todo"))
+	m, _ = press(m, tea.KeyCtrlT)
+	m, quit := press(m, tea.KeyEsc)
+	if quit || m.mode != modeFinder || m.finder.Scope() != finder.ScopeNotes {
+		t.Errorf("quit=%v mode=%v scope=%v", quit, m.mode, m.finder.Scope())
+	}
+}
+
+func TestEditTemplateKeepsCurrent(t *testing.T) {
+	dir := mkdir(t, "todo")
+	addTemplates(t, dir, map[string]string{"meeting": "# m\n"}, "meeting")
+	m := New(dir)
+	m, _ = press(m, tea.KeyEnter) // todo is current
+	m, _ = press(m, tea.KeyEsc)
+	m, _ = press(m, tea.KeyCtrlT)
+	m, _ = press(m, tea.KeyEnter) // open meeting
+	if m.mode != modeEdit || m.current == nil || m.current.Name != "todo" {
+		t.Fatalf("mode=%v current=%v", m.mode, m.current)
+	}
+	if v := m.View(); !strings.Contains(v, "template: meeting") || strings.Contains(v, "ctrl+t") {
+		t.Errorf("editor view:\n%s", v)
+	}
+	m, _ = press(m, tea.KeyCtrlT) // nothing on a template
+	if m.mode != modeEdit {
+		t.Errorf("ctrl+t on a template changed mode to %v", m.mode)
+	}
+	m = typeRunes(m, "\n- a")
+	m, _ = press(m, tea.KeyEsc)
+	if m.mode != modeFinder || m.finder.Scope() != finder.ScopeTemplates || m.finder.Query() != "" {
+		t.Fatalf("mode=%v scope=%v query=%q", m.mode, m.finder.Scope(), m.finder.Query())
+	}
+	if m.current == nil || m.current.Name != "todo" {
+		t.Errorf("current = %v", m.current)
+	}
+	b, err := os.ReadFile(filepath.Join(dir, ".templates", "meeting.md"))
+	if err != nil || string(b) != "# m\n- a\n" {
+		t.Errorf("template file = %q, %v", b, err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "todo.md")); len(b) != 0 {
+		t.Errorf("note touched: %q", b)
+	}
+}
+
+func TestCreateTemplateFromFinder(t *testing.T) {
+	dir := mkdir(t, "todo")
+	m := New(dir)
+	m, _ = press(m, tea.KeyCtrlT)
+	m = typeRunes(m, "meeting")
+	m, _ = press(m, tea.KeyEnter)
+	if m.mode != modeEdit || m.current != nil {
+		t.Fatalf("mode=%v current=%v", m.mode, m.current)
+	}
+	if v := m.View(); !strings.Contains(v, "{{title}}") || !strings.Contains(v, "template: meeting") {
+		t.Errorf("editor view:\n%s", v)
+	}
+	m, _ = press(m, tea.KeyEsc)
+	if m.mode != modeFinder || m.finder.Scope() != finder.ScopeTemplates {
+		t.Fatalf("mode=%v scope=%v", m.mode, m.finder.Scope())
+	}
+	if rows := m.finder.Rows(); len(rows) != 1 || rows[0].Note.Name != "meeting" {
+		t.Errorf("template rows = %v", rows)
+	}
+	m, _ = press(m, tea.KeyCtrlT)
+	if rows := m.finder.Rows(); len(rows) != 1 || rows[0].Note.Name != "todo" {
+		t.Errorf(".templates leaked into notes: %v", rows)
+	}
+}
+
+func TestChangeDirFromTemplateScope(t *testing.T) {
+	m := New(mkdir(t, "todo"))
+	m, _ = press(m, tea.KeyCtrlT)
+	m = openPickerFromFinder(t, m)
+	m, quit := press(m, tea.KeyEsc)
+	if quit || m.mode != modeFinder || m.finder.Scope() != finder.ScopeNotes {
+		t.Errorf("quit=%v mode=%v scope=%v", quit, m.mode, m.finder.Scope())
+	}
+}
+
+func TestUnreadableTemplateKeepsScopeAndCurrent(t *testing.T) {
+	dir := mkdir(t, "todo")
+	addTemplates(t, dir, map[string]string{"meeting": "# m\n"}, "meeting")
+	m := New(dir)
+	m, _ = press(m, tea.KeyEnter)
+	m, _ = press(m, tea.KeyEsc)
+	m, _ = press(m, tea.KeyCtrlT)
+	os.Remove(filepath.Join(dir, ".templates", "meeting.md"))
+	m, _ = press(m, tea.KeyEnter)
+	if m.mode != modeFinder || m.finder.Scope() != finder.ScopeTemplates {
+		t.Fatalf("mode=%v scope=%v", m.mode, m.finder.Scope())
+	}
+	if m.current == nil || m.current.Name != "todo" {
+		t.Errorf("current = %v", m.current)
+	}
+	if v := m.View(); !strings.Contains(v, "cannot read") || !strings.Contains(v, "meeting") {
+		t.Errorf("view lacks error:\n%s", v)
+	}
+}
+
+// openNoteForInsert opens the note "n" (content "ab") in edit mode with the
+// cursor between a and b and the given templates present.
+func openNoteForInsert(t *testing.T, files map[string]string, order ...string) (Model, string) {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "n.md"), []byte("ab\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	addTemplates(t, dir, files, order...)
+	m := New(dir)
+	m, _ = feed(m, tea.WindowSizeMsg{Width: 60, Height: 12})
+	m, _ = press(m, tea.KeyEnter)
+	m, _ = deliver(m, rune1('e'))
+	m, _ = press(m, tea.KeyLeft)
+	if m.mode != modeEdit {
+		t.Fatalf("mode = %v", m.mode)
+	}
+	return m, dir
+}
+
+func TestInsertTemplateWithForm(t *testing.T) {
+	tpl := "---\nform:\n  - name: topic\n    type: text\n  - name: prio\n    type: option\n    options: [low, high]\n---\n# {{topic}} ({{prio}})\n- "
+	m, dir := openNoteForInsert(t, map[string]string{"meeting": tpl, "daily": "x"}, "daily", "meeting")
+	m, _ = press(m, tea.KeyCtrlT)
+	if m.mode != modeTemplate {
+		t.Fatalf("mode = %v", m.mode)
+	}
+	if v := m.View(); !strings.Contains(v, "meeting") || !strings.Contains(v, "daily") {
+		t.Errorf("picker view:\n%s", v)
+	}
+	if got := strings.Count(m.View(), "\n") + 1; got != 12 {
+		t.Errorf("picker height = %d, want 12", got)
+	}
+	m, _ = press(m, tea.KeyEnter) // meeting (newest) opens the form
+	if m.mode != modeTemplate || !m.tmpl.InForm() {
+		t.Fatalf("mode=%v form=%v", m.mode, m.tmpl.InForm())
+	}
+	m = typeRunes(m, "Standup")
+	m, _ = press(m, tea.KeyEnter, tea.KeyRight, tea.KeyEnter)
+	if m.mode != modeEdit {
+		t.Fatalf("mode after submit = %v", m.mode)
+	}
+	if v := m.View(); !strings.Contains(v, "# Standup (high)") || !strings.Contains(v, "esc save & back") {
+		t.Errorf("editor view:\n%s", v)
+	}
+	m = typeRunes(m, "X") // cursor is right after the inserted "- "
+	m, _ = press(m, tea.KeyEsc)
+	if m.mode != modePreview {
+		t.Errorf("mode after esc = %v", m.mode)
+	}
+	b, _ := os.ReadFile(filepath.Join(dir, "n.md"))
+	if string(b) != "a# Standup (high)\n- Xb\n" {
+		t.Errorf("n.md = %q", b)
+	}
+}
+
+func TestInsertFieldlessTemplate(t *testing.T) {
+	m, dir := openNoteForInsert(t, map[string]string{"daily": "# Daily\n\n- [ ] \n"}, "daily")
+	m, _ = press(m, tea.KeyCtrlT, tea.KeyEnter)
+	if m.mode != modeEdit {
+		t.Fatalf("mode = %v", m.mode)
+	}
+	m, _ = press(m, tea.KeyEsc)
+	b, _ := os.ReadFile(filepath.Join(dir, "n.md"))
+	if string(b) != "a# Daily\n\n- [ ] b\n" {
+		t.Errorf("n.md = %q", b)
+	}
+}
+
+func TestInsertCancelLeavesEditorUntouched(t *testing.T) {
+	for _, enter := range []bool{false, true} {
+		tpl := "---\nform:\n  - name: topic\n    type: text\n---\n# {{topic}}\n"
+		m, dir := openNoteForInsert(t, map[string]string{"meeting": tpl}, "meeting")
+		m, _ = press(m, tea.KeyCtrlT)
+		if enter {
+			m, _ = press(m, tea.KeyEnter)
+			m = typeRunes(m, "typed")
+		} else {
+			m = typeRunes(m, "me")
+		}
+		m, quit := press(m, tea.KeyEsc)
+		if quit || m.mode != modeEdit {
+			t.Fatalf("enter=%v: quit=%v mode=%v", enter, quit, m.mode)
+		}
+		if v := m.View(); !strings.Contains(v, "esc save & back") || strings.Contains(v, "typed") {
+			t.Errorf("editor view:\n%s", v)
+		}
+		m = typeRunes(m, "X") // cursor still between a and b
+		m, _ = press(m, tea.KeyEsc)
+		b, _ := os.ReadFile(filepath.Join(dir, "n.md"))
+		if string(b) != "aXb\n" {
+			t.Errorf("enter=%v: n.md = %q", enter, b)
+		}
+	}
+}
+
+func TestInsertCancelWithoutTypingDoesNotWrite(t *testing.T) {
+	m, dir := openNoteForInsert(t, map[string]string{"meeting": "x"}, "meeting")
+	p := filepath.Join(dir, "n.md")
+	old := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	os.Chtimes(p, old, old)
+	m, _ = press(m, tea.KeyCtrlT, tea.KeyEsc, tea.KeyEsc)
+	if m.mode != modePreview {
+		t.Fatalf("mode = %v", m.mode)
+	}
+	if info, _ := os.Stat(p); !info.ModTime().Equal(old) {
+		t.Error("note rewritten after a cancelled insertion")
+	}
+}
+
+func TestInsertModeResize(t *testing.T) {
+	m, _ := openNoteForInsert(t, map[string]string{"meeting": "x"}, "meeting")
+	m, _ = press(m, tea.KeyCtrlT)
+	m, _ = feed(m, tea.WindowSizeMsg{Width: 60, Height: 8})
+	if got := strings.Count(m.View(), "\n") + 1; got != 8 {
+		t.Errorf("picker height after resize = %d, want 8", got)
+	}
+	m, _ = press(m, tea.KeyEsc)
+	if got := strings.Count(m.View(), "\n") + 1; got != 8 {
+		t.Errorf("editor height after resize = %d, want 8", got)
+	}
+}

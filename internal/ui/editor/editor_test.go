@@ -429,3 +429,146 @@ func TestManyLines(t *testing.T) {
 		t.Errorf("file tail = %q", got[len(got)-20:])
 	}
 }
+
+// setupTemplate writes templates under <dir>/.templates and returns the
+// templates store.
+func setupTemplate(t *testing.T, files map[string]string) notes.Store {
+	t.Helper()
+	dir := t.TempDir()
+	tdir := filepath.Join(dir, ".templates")
+	if err := os.Mkdir(tdir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for n, c := range files {
+		p := filepath.Join(tdir, n+".md")
+		if err := os.WriteFile(p, []byte(c), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(p, oldTime, oldTime); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return notes.Store{Dir: tdir}
+}
+
+func openTemplate(t *testing.T, s notes.Store, name string) Model {
+	t.Helper()
+	m, err := NewTemplate(s, notes.Note{Name: name})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestNewTemplateReadsAndSaves(t *testing.T) {
+	s := setupTemplate(t, map[string]string{"meeting": "# {{title}}\n"})
+	m := openTemplate(t, s, "meeting")
+	if got := m.ta.Value(); got != "# {{title}}" {
+		t.Errorf("value = %q", got)
+	}
+	m, _ = press(m, tea.KeyEnter)
+	m = runes(m, "- item")
+	m, out := press(m, tea.KeyEsc)
+	if out != (DoneMsg{Template: true}) {
+		t.Fatalf("esc -> %#v", out)
+	}
+	b, err := os.ReadFile(filepath.Join(s.Dir, "meeting.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(b) != "# {{title}}\n- item\n" {
+		t.Errorf(".templates/meeting.md = %q", b)
+	}
+	if _, err := NewTemplate(s, notes.Note{Name: "gone"}); err == nil {
+		t.Error("expected error for a missing template")
+	}
+}
+
+func TestDoneMsgTemplateFlag(t *testing.T) {
+	s := setup(t, map[string]string{"todo": "a\n"})
+	if _, out := press(open(t, s, "todo"), tea.KeyEsc); out != (DoneMsg{Template: false}) {
+		t.Errorf("note esc -> %#v", out)
+	}
+	ts := setupTemplate(t, map[string]string{"meeting": "a\n"})
+	if _, out := press(openTemplate(t, ts, "meeting"), tea.KeyEsc); out != (DoneMsg{Template: true}) {
+		t.Errorf("template esc -> %#v", out)
+	}
+}
+
+func TestCtrlTDoesNotTranspose(t *testing.T) {
+	s := setup(t, map[string]string{"todo": "ab"})
+	m := open(t, s, "todo") // cursor at the end, after "ab"
+	m, out := press(m, tea.KeyCtrlT)
+	if out != (InsertTemplateMsg{}) {
+		t.Errorf("ctrl+t on a note -> %#v", out)
+	}
+	if got := m.ta.Value(); got != "ab" {
+		t.Errorf("value after ctrl+t = %q, want ab", got)
+	}
+	ts := setupTemplate(t, map[string]string{"meeting": "ab"})
+	tm, out := press(openTemplate(t, ts, "meeting"), tea.KeyCtrlT)
+	if out != nil {
+		t.Errorf("ctrl+t on a template -> %#v", out)
+	}
+	if got := tm.ta.Value(); got != "ab" {
+		t.Errorf("template value after ctrl+t = %q, want ab", got)
+	}
+}
+
+func TestInsertAtCursor(t *testing.T) {
+	s := setup(t, map[string]string{"todo": "ab"})
+	m := open(t, s, "todo")
+	m, _ = press(m, tea.KeyLeft) // between a and b
+	m = m.Insert("# Standup\n- ")
+	if got := m.ta.Value(); got != "a# Standup\n- b" {
+		t.Errorf("value = %q", got)
+	}
+	if m.ta.Line() != 1 {
+		t.Errorf("cursor line = %d, want 1", m.ta.Line())
+	}
+	info := m.ta.LineInfo()
+	if col := info.StartColumn + info.ColumnOffset; col != 2 {
+		t.Errorf("cursor column = %d, want 2", col)
+	}
+	m = runes(m, "X") // lands right after the inserted "- "
+	if got := m.ta.Value(); got != "a# Standup\n- Xb" {
+		t.Errorf("after typing = %q", got)
+	}
+	m, _ = press(m, tea.KeyBackspace)
+	m, out := press(m, tea.KeyEsc)
+	if out != (DoneMsg{}) {
+		t.Fatalf("esc -> %#v", out)
+	}
+	if b, old := file(t, s, "todo"); b != "a# Standup\n- b\n" || old {
+		t.Errorf("file = %q old=%v", b, old)
+	}
+}
+
+func TestInsertScrollsToCursor(t *testing.T) {
+	s := setup(t, map[string]string{"todo": "top"})
+	m := resize(open(t, s, "todo"), 80, 6)
+	var b strings.Builder
+	for i := 1; i <= 20; i++ {
+		fmt.Fprintf(&b, "\nline%d", i)
+	}
+	m = m.Insert(b.String())
+	if v := m.View(); !strings.Contains(v, "line20") || strings.Contains(v, "top") {
+		t.Errorf("view not scrolled to the inserted end:\n%s", v)
+	}
+}
+
+func TestStatusBarKinds(t *testing.T) {
+	s := setup(t, map[string]string{"todo": "x"})
+	last := lastLine(resize(open(t, s, "todo"), 80, 6).View())
+	if !strings.Contains(last, "ctrl+t template") || !strings.Contains(last, "esc save & back") || !strings.Contains(last, "todo") {
+		t.Errorf("note bar = %q", last)
+	}
+	if strings.Contains(last, "template:") {
+		t.Errorf("note bar marks a template: %q", last)
+	}
+	ts := setupTemplate(t, map[string]string{"meeting": "x"})
+	last = lastLine(resize(openTemplate(t, ts, "meeting"), 80, 6).View())
+	if strings.Contains(last, "ctrl+t") || !strings.Contains(last, "esc save & back") || !strings.Contains(last, "template: meeting") {
+		t.Errorf("template bar = %q", last)
+	}
+}
