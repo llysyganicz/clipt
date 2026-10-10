@@ -1,0 +1,51 @@
+# GoReleaser configuration. Runs in the release workflow on a vX.Y.Z tag and
+# locally with `go run github.com/goreleaser/goreleaser/v2@v2.18.3 release --snapshot --clean`.
+version: 2
+
+project_name: clipt
+
+builds:
+  - main: ./cmd/clipt
+    binary: clipt
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+    goarch:
+      - amd64
+    # The binary has no version variable, so replace GoReleaser's default
+    # -X main.version flags with plain stripping.
+    ldflags:
+      - -s -w
+
+archives:
+  - formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  use: git
+  sort: asc
+  filters:
+    exclude:
+      - "^Merge "
+
+release:
+  # Named explicitly so `goreleaser check` and snapshot builds work
+  # without a git remote.
+  github:
+    owner: llysyganicz
+    name: clipt
+  mode: replace
+  draft: false
+  prerelease: false
