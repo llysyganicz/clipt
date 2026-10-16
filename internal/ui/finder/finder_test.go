@@ -50,6 +50,8 @@ func k(s string) tea.KeyMsg {
 		return tea.KeyMsg{Type: tea.KeyCtrlC}
 	case "ctrl+t":
 		return tea.KeyMsg{Type: tea.KeyCtrlT}
+	case "ctrl+q":
+		return tea.KeyMsg{Type: tea.KeyCtrlQ}
 	}
 	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
 }
@@ -358,7 +360,7 @@ func TestTemplateViewPromptAndHints(t *testing.T) {
 		t.Errorf("line 1 = %q", lines[1])
 	}
 	last := lines[len(lines)-1]
-	for _, want := range []string{"enter edit", "esc notes", "ctrl+t notes", "ctrl+o change directory"} {
+	for _, want := range []string{"enter edit", "esc notes", "ctrl+t notes", "ctrl+o change dir", "ctrl+q quit"} {
 		if !strings.Contains(last, want) {
 			t.Errorf("footer %q lacks %q", last, want)
 		}
@@ -418,4 +420,29 @@ func run(cmd tea.Cmd) tea.Msg {
 	case <-time.After(20 * time.Millisecond):
 		return nil
 	}
+}
+
+func TestCtrlQQuits(t *testing.T) {
+	store := newDir(t, "a", "b")
+	cur := &notes.Note{Name: "a"}
+	if _, out := press(New(store, cur, "x"), "ctrl+q"); out != tea.Msg(tea.QuitMsg{}) {
+		t.Errorf("ctrl+q with a current note -> %#v", out)
+	}
+	if _, out := press(New(store, nil, ""), "ctrl+q"); out != tea.Msg(tea.QuitMsg{}) {
+		t.Errorf("ctrl+q without a current note -> %#v", out)
+	}
+	tstore := templatesDir(t, nil, []string{"meeting"})
+	if _, out := press(NewTemplates(templates.Store(tstore.Dir), ""), "ctrl+q"); out != tea.Msg(tea.QuitMsg{}) {
+		t.Errorf("ctrl+q in template scope -> %#v", out)
+	}
+	for _, v := range []string{New(store, nil, "").View(), NewTemplates(templates.Store(tstore.Dir), "").View()} {
+		if last := lastLine(v); !strings.Contains(last, "ctrl+q quit") {
+			t.Errorf("footer lacks ctrl+q: %q", last)
+		}
+	}
+}
+
+func lastLine(v string) string {
+	l := strings.Split(v, "\n")
+	return l[len(l)-1]
 }

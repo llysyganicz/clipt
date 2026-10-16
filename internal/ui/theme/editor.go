@@ -5,17 +5,24 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+var (
+	// LineNumber styles the edit mode's line number gutter.
+	LineNumber = lipgloss.NewStyle().Foreground(lipgloss.Color(gray))
+	// CursorLineNumber styles the gutter on the cursor's line.
+	CursorLineNumber = lipgloss.NewStyle().Foreground(lipgloss.Color(yellow))
+)
+
 // EditorStyles returns the focused and blurred styles for the edit mode's
-// text area: gray line numbers, a yellow number on the cursor line, text in
-// the normal foreground and no cursor line background.
+// text area: text in the normal foreground, no cursor line background and
+// no prompt styling (the editor draws its own gutter through the prompt).
 func EditorStyles() (focused, blurred textarea.Style) {
 	text := lipgloss.NewStyle().Foreground(lipgloss.Color(fg))
 	focused = textarea.Style{
 		Base:             lipgloss.NewStyle(),
 		CursorLine:       text,
-		CursorLineNumber: lipgloss.NewStyle().Foreground(lipgloss.Color(yellow)),
+		CursorLineNumber: CursorLineNumber,
 		EndOfBuffer:      lipgloss.NewStyle(),
-		LineNumber:       lipgloss.NewStyle().Foreground(lipgloss.Color(gray)),
+		LineNumber:       LineNumber,
 		Placeholder:      Hint,
 		Prompt:           lipgloss.NewStyle(),
 		Text:             text,

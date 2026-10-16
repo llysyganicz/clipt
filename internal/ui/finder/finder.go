@@ -144,7 +144,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	m.err = ""
 	switch key.Type {
-	case tea.KeyCtrlC:
+	case tea.KeyCtrlC, tea.KeyCtrlQ:
 		return m, tea.Quit
 	case tea.KeyEsc:
 		return m, func() tea.Msg { return BackMsg{} }
@@ -250,9 +250,9 @@ func (m Model) emptyHint() string {
 
 func (m Model) footer() string {
 	if m.scope == ScopeTemplates {
-		return "enter edit · esc notes · ctrl+t notes · ctrl+o change directory"
+		return "enter edit · esc notes · ctrl+t notes · ctrl+o change dir · ctrl+q quit"
 	}
-	return "enter open · esc back · ctrl+t templates · ctrl+o change directory"
+	return "enter open · esc back · ctrl+t templates · ctrl+o change dir · ctrl+q quit"
 }
 
 // window returns the slice of rows that fits the terminal height.

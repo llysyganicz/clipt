@@ -157,12 +157,12 @@ func TestStatusBar(t *testing.T) {
 	if !strings.Contains(last, "a-rather-long-note-name") || !strings.Contains(last, "esc back") {
 		t.Errorf("wide bar = %q", last)
 	}
-	m = resize(m, 50, 5)
+	m = resize(m, 70, 5)
 	last = lastLine(m.View())
-	if !strings.Contains(last, "esc back") || strings.Contains(last, "a-rather-long-note-name") {
+	if !strings.Contains(last, "esc back") || !strings.Contains(last, "ctrl+q quit") || strings.Contains(last, "a-rather-long-note-name") {
 		t.Errorf("narrow bar = %q", last)
 	}
-	if lipgloss.Width(last) > 50 {
+	if lipgloss.Width(last) > 70 {
 		t.Errorf("narrow bar too wide: %d", lipgloss.Width(last))
 	}
 }
@@ -283,5 +283,34 @@ func TestDeleteFails(t *testing.T) {
 	m, out := send(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
 	if out != nil || m.state != stateView || !strings.Contains(m.View(), "no such file") {
 		t.Errorf("delete failure not shown: out=%v\n%s", out, m.View())
+	}
+}
+
+func TestCtrlQQuitsFromEveryState(t *testing.T) {
+	s := setup(t, map[string]string{"n": "x"})
+	m := open(t, s, "n")
+	if _, out := press(m, tea.KeyCtrlQ); out != tea.Msg(tea.QuitMsg{}) {
+		t.Errorf("ctrl+q -> %v", out)
+	}
+	rn := runes(m, "r")
+	rn = runes(rn, "2")
+	if rn.state != stateRename {
+		t.Fatalf("state = %v", rn.state)
+	}
+	if _, out := press(rn, tea.KeyCtrlQ); out != tea.Msg(tea.QuitMsg{}) {
+		t.Errorf("ctrl+q during rename -> %v", out)
+	}
+	if _, err := os.Stat(filepath.Join(s.Dir, "n.md")); err != nil {
+		t.Error("note renamed by ctrl+q")
+	}
+	dl := runes(m, "d")
+	if dl.state != stateConfirm {
+		t.Fatalf("state = %v", dl.state)
+	}
+	if _, out := press(dl, tea.KeyCtrlQ); out != tea.Msg(tea.QuitMsg{}) {
+		t.Errorf("ctrl+q during delete confirmation -> %v", out)
+	}
+	if _, err := os.Stat(filepath.Join(s.Dir, "n.md")); err != nil {
+		t.Error("note deleted by ctrl+q")
 	}
 }

@@ -91,7 +91,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 	m.err = ""
-	if key.Type == tea.KeyCtrlC {
+	if key.Type == tea.KeyCtrlC || key.Type == tea.KeyCtrlQ {
 		return m, tea.Quit
 	}
 	if m.state == stateConfirm {
@@ -166,6 +166,6 @@ func (m Model) View() string {
 	if m.err != "" {
 		b.WriteString("\n" + theme.Error.Render(m.err))
 	}
-	b.WriteString("\n" + theme.Hint.Render("enter accept · esc back"))
+	b.WriteString("\n" + theme.Hint.Render("enter accept · esc back · ctrl+q quit"))
 	return b.String()
 }

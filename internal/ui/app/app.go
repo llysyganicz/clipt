@@ -182,6 +182,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tmpl.CancelMsg:
 		m.mode = modeEdit
 		return m, nil
+	case tmpl.QuitMsg:
+		// Abandon the insertion; the note's own edits are saved by the
+		// editor, which stays open with the error when that fails.
+		m.mode = modeEdit
+		ned, cmd := m.edit.SaveAndQuit()
+		m.edit = ned.(editor.Model)
+		return m, cmd
 	}
 
 	var cmd tea.Cmd

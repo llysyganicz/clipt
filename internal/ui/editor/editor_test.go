@@ -336,12 +336,12 @@ func TestViewStatusBarAndError(t *testing.T) {
 	if got := strings.Count(m.View(), "\n") + 1; got != 6 {
 		t.Errorf("view height = %d, want 6", got)
 	}
-	m = resize(m, 36, 6)
+	m = resize(m, 64, 6)
 	last = lastLine(m.View())
 	if !strings.Contains(last, "esc save & back") || strings.Contains(last, "a-rather-long-note-name") || !strings.Contains(last, "…") {
 		t.Errorf("narrow bar = %q", last)
 	}
-	if lipgloss.Width(last) > 36 {
+	if lipgloss.Width(last) > 64 {
 		t.Errorf("narrow bar too wide: %d", lipgloss.Width(last))
 	}
 
@@ -560,7 +560,7 @@ func TestInsertScrollsToCursor(t *testing.T) {
 func TestStatusBarKinds(t *testing.T) {
 	s := setup(t, map[string]string{"todo": "x"})
 	last := lastLine(resize(open(t, s, "todo"), 80, 6).View())
-	if !strings.Contains(last, "ctrl+t template") || !strings.Contains(last, "esc save & back") || !strings.Contains(last, "todo") {
+	if !strings.Contains(last, "ctrl+t template") || !strings.Contains(last, "esc save & back") || !strings.Contains(last, "ctrl+q save & quit") || !strings.Contains(last, "todo") {
 		t.Errorf("note bar = %q", last)
 	}
 	if strings.Contains(last, "template:") {
@@ -568,7 +568,7 @@ func TestStatusBarKinds(t *testing.T) {
 	}
 	ts := setupTemplate(t, map[string]string{"meeting": "x"})
 	last = lastLine(resize(openTemplate(t, ts, "meeting"), 80, 6).View())
-	if strings.Contains(last, "ctrl+t") || !strings.Contains(last, "esc save & back") || !strings.Contains(last, "template: meeting") {
+	if strings.Contains(last, "ctrl+t") || !strings.Contains(last, "esc save & back") || !strings.Contains(last, "ctrl+q save & quit") || !strings.Contains(last, "template: meeting") {
 		t.Errorf("template bar = %q", last)
 	}
 }

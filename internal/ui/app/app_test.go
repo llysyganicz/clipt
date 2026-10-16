@@ -678,3 +678,71 @@ func TestInsertModeResize(t *testing.T) {
 		t.Errorf("editor height after resize = %d, want 8", got)
 	}
 }
+
+func TestCtrlQFromTemplateFormSavesNoteAndQuits(t *testing.T) {
+	tpl := "---\nform:\n  - name: topic\n    type: text\n---\n# {{topic}}\n"
+	m, dir := openNoteForInsert(t, map[string]string{"meeting": tpl}, "meeting")
+	m = typeRunes(m, "X") // note is now aXb
+	m, _ = press(m, tea.KeyCtrlT, tea.KeyEnter)
+	if m.mode != modeTemplate || !m.tmpl.InForm() {
+		t.Fatalf("mode=%v form=%v", m.mode, m.tmpl.InForm())
+	}
+	m = typeRunes(m, "typed")
+	m, quit := press(m, tea.KeyCtrlQ)
+	if !quit {
+		t.Error("ctrl+q from the form did not quit")
+	}
+	b, _ := os.ReadFile(filepath.Join(dir, "n.md"))
+	if string(b) != "aXb\n" {
+		t.Errorf("n.md = %q", b)
+	}
+}
+
+func TestCtrlQFromTemplatePickerWithFailingWrite(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores permissions")
+	}
+	m, dir := openNoteForInsert(t, map[string]string{"meeting": "x"}, "meeting")
+	m = typeRunes(m, "X")
+	m, _ = press(m, tea.KeyCtrlT)
+	p := filepath.Join(dir, "n.md")
+	if err := os.Chmod(p, 0o444); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(dir, 0o755); os.Chmod(p, 0o644) })
+	m, quit := press(m, tea.KeyCtrlQ)
+	if quit || m.mode != modeEdit {
+		t.Fatalf("quit=%v mode=%v", quit, m.mode)
+	}
+	if v := m.View(); !strings.Contains(v, "permission denied") || !strings.Contains(v, "aXb") {
+		t.Errorf("editor view:\n%s", v)
+	}
+	b, _ := os.ReadFile(p)
+	if string(b) != "ab\n" {
+		t.Errorf("n.md = %q", b)
+	}
+}
+
+func TestCtrlQQuitsFromFinderPreviewAndEditor(t *testing.T) {
+	dir := mkdir(t, "a")
+	m := New(dir)
+	if _, quit := press(m, tea.KeyCtrlQ); !quit {
+		t.Error("finder: ctrl+q did not quit")
+	}
+	m, _ = press(m, tea.KeyEnter)
+	if _, quit := press(m, tea.KeyCtrlQ); !quit {
+		t.Error("preview: ctrl+q did not quit")
+	}
+	m, _ = deliver(m, rune1('e'))
+	m = typeRunes(m, "hi")
+	if _, quit := press(m, tea.KeyCtrlQ); !quit {
+		t.Error("editor: ctrl+q did not quit")
+	}
+	b, _ := os.ReadFile(filepath.Join(dir, "a.md"))
+	if string(b) != "hi\n" {
+		t.Errorf("a.md = %q", b)
+	}
+}

@@ -69,6 +69,8 @@ func k(s string) tea.KeyMsg {
 		return tea.KeyMsg{Type: tea.KeyCtrlN}
 	case "ctrl+c":
 		return tea.KeyMsg{Type: tea.KeyCtrlC}
+	case "ctrl+q":
+		return tea.KeyMsg{Type: tea.KeyCtrlQ}
 	case "backspace":
 		return tea.KeyMsg{Type: tea.KeyBackspace}
 	}
@@ -105,7 +107,7 @@ func run(cmd tea.Cmd) tea.Msg {
 	select {
 	case m := <-ch:
 		switch m.(type) {
-		case InsertMsg, CancelMsg, tea.QuitMsg:
+		case InsertMsg, CancelMsg, QuitMsg, tea.QuitMsg:
 			return m
 		}
 		return nil // cursor blink and the like
@@ -404,7 +406,7 @@ func TestViewPicker(t *testing.T) {
 	if lines[1] != "> meeting" || lines[2] != "  daily" {
 		t.Errorf("rows = %q, %q", lines[1], lines[2])
 	}
-	if last := lines[len(lines)-1]; !strings.Contains(last, "enter") || !strings.Contains(last, "esc") {
+	if last := lines[len(lines)-1]; !strings.Contains(last, "enter") || !strings.Contains(last, "esc") || !strings.Contains(last, "ctrl+q quit") {
 		t.Errorf("status bar = %q", last)
 	}
 	nm, _ := m.Update(tea.WindowSizeMsg{Width: 40, Height: 5})
@@ -439,7 +441,7 @@ func TestViewForm(t *testing.T) {
 		t.Errorf("row 2 = %q", lines[2])
 	}
 	last := lines[len(lines)-1]
-	for _, want := range []string{"enter", "tab", "esc"} {
+	for _, want := range []string{"enter", "tab", "esc", "ctrl+q quit"} {
 		if !strings.Contains(last, want) {
 			t.Errorf("status bar %q lacks %q", last, want)
 		}
@@ -448,5 +450,16 @@ func TestViewForm(t *testing.T) {
 	lines = strings.Split(plain(m.View()), "\n")
 	if !strings.HasPrefix(lines[2], "> prio: low < high >") {
 		t.Errorf("row 2 after right = %q", lines[2])
+	}
+}
+
+func TestCtrlQEmitsQuit(t *testing.T) {
+	if _, msg := press(New(setup(t, []string{"a"}, nil)), "ctrl+q"); msg != (QuitMsg{}) {
+		t.Errorf("picker ctrl+q -> %#v", msg)
+	}
+	m := openForm(t)
+	m, _ = press(m, "typed")
+	if _, msg := press(m, "ctrl+q"); msg != (QuitMsg{}) {
+		t.Errorf("form ctrl+q -> %#v", msg)
 	}
 }

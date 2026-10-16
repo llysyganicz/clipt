@@ -38,6 +38,8 @@ func key(s string) tea.KeyMsg {
 		return tea.KeyMsg{Type: tea.KeyEnter}
 	case "esc":
 		return tea.KeyMsg{Type: tea.KeyEsc}
+	case "ctrl+q":
+		return tea.KeyMsg{Type: tea.KeyCtrlQ}
 	}
 	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
 }
@@ -181,5 +183,30 @@ func run(cmd tea.Cmd) tea.Msg {
 		return m
 	case <-time.After(20 * time.Millisecond):
 		return nil
+	}
+}
+
+func TestCtrlQQuitsFromAnyState(t *testing.T) {
+	setup(t)
+	_, msg := send(New(Finder, "x", ""), "ctrl+q")
+	if msg != tea.Msg(tea.QuitMsg{}) {
+		t.Errorf("ctrl+q in the input -> %#v", msg)
+	}
+	if cfg, _, _ := config.Load(); cfg != "" {
+		t.Errorf("config written by ctrl+q: %q", cfg)
+	}
+	dir := filepath.Join(t.TempDir(), "a", "b")
+	m, _ := send(New(Startup, dir, ""), "enter")
+	if m.state != stateConfirm {
+		t.Fatalf("state = %v", m.state)
+	}
+	if _, msg := send(m, "ctrl+q"); msg != tea.Msg(tea.QuitMsg{}) {
+		t.Errorf("ctrl+q in the confirmation -> %#v", msg)
+	}
+	if _, err := os.Stat(dir); err == nil {
+		t.Error("ctrl+q created the directory")
+	}
+	if !strings.Contains(New(Finder, "x", "").View(), "ctrl+q quit") {
+		t.Error("hint lacks ctrl+q")
 	}
 }

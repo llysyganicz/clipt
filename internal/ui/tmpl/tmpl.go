@@ -26,6 +26,10 @@ type InsertMsg struct{ Text string }
 // CancelMsg reports that the user left the insert mode without a result.
 type CancelMsg struct{}
 
+// QuitMsg is emitted on ctrl+q: the root should abandon the insertion, save
+// the note through the editor and quit.
+type QuitMsg struct{}
+
 type state int
 
 const (
@@ -37,8 +41,8 @@ const (
 	defaultWidth  = 80
 	defaultHeight = 24
 
-	pickHints  = "enter pick · esc back"
-	formHints  = "enter next/submit · tab/shift+tab move · ←/→ option · esc back"
+	pickHints  = "enter pick · esc back · ctrl+q quit"
+	formHints  = "enter next/submit · tab/shift+tab move · ←/→ option · esc back · ctrl+q quit"
 	emptyHint  = "No templates yet. Create one from the finder with ctrl+t."
 	optionOpen = "< "
 	optionEnd  = " >"
@@ -147,6 +151,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.Type {
 		case tea.KeyCtrlC:
 			return m, tea.Quit
+		case tea.KeyCtrlQ:
+			return m, func() tea.Msg { return QuitMsg{} }
 		case tea.KeyEsc:
 			return m, func() tea.Msg { return CancelMsg{} }
 		}

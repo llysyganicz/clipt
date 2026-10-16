@@ -8,7 +8,8 @@ rendered, and edit it in an insert-only text area that saves when you leave.
 ## Modes
 
 clipt has three modes plus a small directory picker. Every mode shows its
-keys in the status bar at the bottom. `ctrl+c` quits from anywhere.
+keys in the status bar at the bottom. `ctrl+q` quits from anywhere, saving
+the note first when you are editing one; `ctrl+c` quits without saving.
 
 ### Finder
 
@@ -25,6 +26,7 @@ no note has exactly the typed name a last row offers to create it.
 | `Enter`             | Open the selected note in preview, or create `<query>.md` on the create row and open it in edit mode |
 | `Esc`               | Back to the open note's preview, or quit when no note is open |
 | `ctrl+o`            | Change the notes directory                                    |
+| `ctrl+q`            | Quit                                                          |
 | `ctrl+c`            | Quit                                                          |
 
 ### Preview
@@ -39,6 +41,7 @@ Shows the open note as rendered markdown, word-wrapped to the terminal width.
 | `r`              | Rename the note (`Enter` confirms, `Esc` cancels)       |
 | `d`              | Delete the note (`y` confirms, `n` or `Esc` cancels)    |
 | `Esc`            | Back to the finder                                      |
+| `ctrl+q`         | Quit                                                    |
 | `ctrl+c`         | Quit                                                    |
 
 A rename is refused when a note with the new name already exists. Deleting
@@ -54,7 +57,10 @@ is no save command; leaving edit mode writes the note if it changed.
 |---------------------------------------|------------------------------------------|
 | printable keys, `Enter`, `Backspace`, `Delete` | Edit the text                   |
 | arrow keys, `Home`, `End`             | Move the cursor                          |
+| `Tab`                                 | Insert two spaces                        |
+| `Shift+Tab`                           | Remove up to two leading spaces          |
 | `Esc`                                 | Save (if changed) and back to preview    |
+| `ctrl+q`                              | Save (if changed) and quit               |
 | `ctrl+c`                              | Quit without saving                      |
 
 ### Notes directory picker
@@ -67,6 +73,7 @@ on `ctrl+o` from the finder. It is a single path input prefilled with
 |-----------|------------------------------------------------------------------------|
 | `Enter`   | Accept the path; a missing directory is created after a `y`/`n` prompt |
 | `Esc`     | Quit on the first run, or back to the finder when opened via `ctrl+o`  |
+| `ctrl+q`  | Quit                                                                   |
 | `ctrl+c`  | Quit                                                                   |
 
 ## Notes directory and config

@@ -26,8 +26,9 @@ type InsertTemplateMsg struct{}
 const (
 	defaultWidth  = 80
 	defaultHeight = 24
-	hints         = "esc save & back · ctrl+t template"
-	templateHints = "esc save & back"
+	indent        = "  " // what Tab inserts and Shift+Tab removes
+	hints         = "esc save & back · ctrl+t template · ctrl+q save & quit"
+	templateHints = "esc save & back · ctrl+q save & quit"
 )
 
 // repositionMsg is a no-op message sent through the text area so it scrolls
@@ -40,6 +41,7 @@ type Model struct {
 	note     notes.Note
 	template bool
 	ta       textarea.Model
+	gutterW  int // columns reserved for the line number gutter
 	baseline string
 	width    int
 	height   int
@@ -70,7 +72,7 @@ func load(store notes.Store, note notes.Note, template bool) (Model, error) {
 	content = strings.TrimSuffix(content, "\n")
 
 	ta := textarea.New()
-	ta.ShowLineNumbers = true
+	ta.ShowLineNumbers = false // the editor draws its own gutter, see gutter.go
 	ta.Prompt = ""
 	ta.CharLimit = 0
 	ta.MaxHeight = 0
@@ -89,6 +91,7 @@ func load(store notes.Store, note notes.Note, template bool) (Model, error) {
 		ta:       ta,
 		baseline: notes.Normalize(ta.Value()),
 	}
+	m.syncGutterWidth()
 	m.resize(defaultWidth, defaultHeight)
 	return m, nil
 }
@@ -140,17 +143,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.Type {
 		case tea.KeyCtrlC:
 			return m, tea.Quit
+		case tea.KeyCtrlQ:
+			return m.SaveAndQuit()
 		case tea.KeyEsc:
-			return m.save()
+			return m.done()
 		case tea.KeyCtrlT:
 			if m.template {
 				return m, nil
 			}
 			return m, func() tea.Msg { return InsertTemplateMsg{} }
+		case tea.KeyTab:
+			return m.Insert(indent), nil
+		case tea.KeyShiftTab:
+			m.dedent()
+			return m, nil
 		}
 	}
 	var cmd tea.Cmd
 	m.ta, cmd = m.ta.Update(msg)
+	if m.syncGutterWidth() {
+		m.scrollToCursor()
+	}
 	return m, cmd
 }
 
@@ -158,22 +171,69 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // and scrolls the view to it.
 func (m Model) Insert(text string) Model {
 	m.ta.InsertString(text)
+	m.syncGutterWidth()
 	m.scrollToCursor()
 	return m
 }
 
+// dedent removes up to len(indent) spaces from the start of the cursor's
+// line and moves the cursor left by as many, not before the line start. The
+// text area has no line-level setter, so the whole value is replaced and
+// the cursor put back, as reflow does.
+func (m *Model) dedent() {
+	row := m.ta.Line()
+	info := m.ta.LineInfo()
+	col := info.StartColumn + info.ColumnOffset
+	lines := strings.Split(m.ta.Value(), "\n")
+	n := 0
+	for n < len(indent) && n < len(lines[row]) && lines[row][n] == ' ' {
+		n++
+	}
+	if n == 0 {
+		return
+	}
+	lines[row] = lines[row][n:]
+	m.ta.SetValue(strings.Join(lines, "\n"))
+	for m.ta.Line() > row {
+		m.ta.CursorUp()
+	}
+	m.ta.SetCursor(max(0, col-n))
+	m.scrollToCursor()
+}
+
 // save writes the note when its content changed since it was loaded and
-// emits DoneMsg. On a write failure the editor stays open with the error.
-func (m Model) save() (tea.Model, tea.Cmd) {
+// reports whether the editor may be left. On a write failure it records the
+// error and reports false.
+func (m *Model) save() bool {
 	now := notes.Normalize(m.ta.Value())
-	if now != m.baseline {
-		if err := m.store.Write(m.note.Name, now); err != nil {
-			m.err = err.Error()
-			return m, nil
-		}
-		m.baseline = now
+	if now == m.baseline {
+		return true
+	}
+	if err := m.store.Write(m.note.Name, now); err != nil {
+		m.err = err.Error()
+		return false
+	}
+	m.baseline = now
+	return true
+}
+
+// done saves and emits DoneMsg; on a write failure the editor stays open
+// with the error.
+func (m Model) done() (tea.Model, tea.Cmd) {
+	if !m.save() {
+		return m, nil
 	}
 	return m, func() tea.Msg { return DoneMsg{Template: m.template} }
+}
+
+// SaveAndQuit saves and quits clipt; on a write failure the editor stays
+// open with the error and clipt keeps running. The root model calls it when
+// the user quits from the template insert mode over this editor.
+func (m Model) SaveAndQuit() (tea.Model, tea.Cmd) {
+	if !m.save() {
+		return m, nil
+	}
+	return m, tea.Quit
 }
 
 // statusBar renders the bottom line: hints left, the note name (or
@@ -198,6 +258,14 @@ func (m Model) statusBar() string {
 
 // View implements tea.Model.
 func (m Model) View() string {
+	labels := m.gutterLabels()
+	blank := strings.Repeat(" ", m.gutterW)
+	m.ta.SetPromptFunc(m.gutterW, func(row int) string {
+		if row < len(labels) {
+			return labels[row]
+		}
+		return blank
+	})
 	body := m.ta.View()
 	if m.err != "" {
 		lines := strings.Split(body, "\n")

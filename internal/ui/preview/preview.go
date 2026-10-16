@@ -31,7 +31,7 @@ type DeletedMsg struct{}
 const (
 	defaultWidth  = 80
 	defaultHeight = 24
-	hints         = "e edit · r rename · d delete · esc back"
+	hints         = "e edit · r rename · d delete · esc back · ctrl+q quit"
 )
 
 type state int
@@ -110,7 +110,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tea.KeyMsg:
 		m.err = ""
-		if msg.Type == tea.KeyCtrlC {
+		if msg.Type == tea.KeyCtrlC || msg.Type == tea.KeyCtrlQ {
 			return m, tea.Quit
 		}
 		switch m.state {
