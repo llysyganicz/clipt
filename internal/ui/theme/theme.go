@@ -2,7 +2,7 @@
 // packages must use these styles and never reference color literals.
 package theme
 
-import "github.com/charmbracelet/lipgloss"
+import "charm.land/lipgloss/v2"
 
 // Gruvbox dark palette.
 const (

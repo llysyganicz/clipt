@@ -11,8 +11,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/llysyganicz/clipt/internal/notes"
 	"github.com/llysyganicz/clipt/internal/templates"
@@ -88,7 +88,7 @@ type Model struct {
 func New(store notes.Store) Model {
 	ti := textinput.New()
 	ti.Prompt = "template> "
-	ti.PromptStyle = theme.Prompt
+	ti.SetStyles(theme.InputStyles())
 	ti.Focus()
 	m := Model{store: store, query: ti, width: defaultWidth, height: defaultHeight}
 	all, err := store.List()
@@ -137,23 +137,23 @@ func (m Model) Values() map[string]string {
 // Err returns the error shown, if any.
 func (m Model) Err() string { return m.err }
 
-// Init implements tea.Model.
+// Init returns the command that starts the cursor blinking.
 func (m Model) Init() tea.Cmd { return textinput.Blink }
 
-// Update implements tea.Model.
-func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+// Update handles a message and returns the new model.
+func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		return m, nil
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		m.err = ""
-		switch msg.Type {
-		case tea.KeyCtrlC:
+		switch msg.String() {
+		case "ctrl+c":
 			return m, tea.Quit
-		case tea.KeyCtrlQ:
+		case "ctrl+q":
 			return m, func() tea.Msg { return QuitMsg{} }
-		case tea.KeyEsc:
+		case "esc":
 			return m, func() tea.Msg { return CancelMsg{} }
 		}
 		if m.state == stateForm {
@@ -170,19 +170,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m Model) updatePick(key tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch key.Type {
-	case tea.KeyUp, tea.KeyCtrlP:
+func (m Model) updatePick(key tea.KeyPressMsg) (Model, tea.Cmd) {
+	switch key.String() {
+	case "up", "ctrl+p":
 		if m.sel > 0 {
 			m.sel--
 		}
 		return m, nil
-	case tea.KeyDown, tea.KeyCtrlN:
+	case "down", "ctrl+n":
 		if m.sel < len(m.rows)-1 {
 			m.sel++
 		}
 		return m, nil
-	case tea.KeyEnter:
+	case "enter":
 		return m.pick()
 	}
 	before := m.query.Value()
@@ -196,7 +196,7 @@ func (m Model) updatePick(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // pick reads and parses the selected template: a field-less one is inserted
 // at once, otherwise the form opens. Errors are shown in place.
-func (m Model) pick() (tea.Model, tea.Cmd) {
+func (m Model) pick() (Model, tea.Cmd) {
 	if len(m.rows) == 0 {
 		return m, nil
 	}
@@ -221,6 +221,7 @@ func (m Model) pick() (tea.Model, tea.Cmd) {
 		// never show or edit it.
 		ti := textinput.New()
 		ti.Prompt = ""
+		ti.SetStyles(theme.InputStyles())
 		ti.SetValue(f.Default())
 		ti.CursorEnd()
 		m.form[i] = row{field: f, input: ti}
@@ -231,26 +232,26 @@ func (m Model) pick() (tea.Model, tea.Cmd) {
 	return m, textinput.Blink
 }
 
-func (m Model) updateForm(key tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch key.Type {
-	case tea.KeyEnter:
+func (m Model) updateForm(key tea.KeyPressMsg) (Model, tea.Cmd) {
+	switch k := key.String(); k {
+	case "enter":
 		if m.focus == len(m.form)-1 {
 			return m.submit()
 		}
 		return m.moveFocus(1)
-	case tea.KeyDown, tea.KeyTab:
+	case "down", "tab":
 		return m.moveFocus(1)
-	case tea.KeyUp, tea.KeyShiftTab:
+	case "up", "shift+tab":
 		return m.moveFocus(-1)
-	case tea.KeyLeft, tea.KeyRight:
+	case "left", "right":
 		r := &m.form[m.focus]
 		if r.field.Type != templates.TypeOption {
 			break
 		}
-		if key.Type == tea.KeyLeft && r.idx > 0 {
+		if k == "left" && r.idx > 0 {
 			r.idx--
 		}
-		if key.Type == tea.KeyRight && r.idx < len(r.field.Options)-1 {
+		if k == "right" && r.idx < len(r.field.Options)-1 {
 			r.idx++
 		}
 		return m, nil
@@ -264,7 +265,7 @@ func (m Model) updateForm(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 // moveFocus moves the focus by delta rows, stopping at the ends.
-func (m Model) moveFocus(delta int) (tea.Model, tea.Cmd) {
+func (m Model) moveFocus(delta int) (Model, tea.Cmd) {
 	next := m.focus + delta
 	if next < 0 || next >= len(m.form) {
 		return m, nil
@@ -280,7 +281,7 @@ func (m Model) setFocus(i int) Model {
 }
 
 // submit validates the number rows and hands back the expanded body.
-func (m Model) submit() (tea.Model, tea.Cmd) {
+func (m Model) submit() (Model, tea.Cmd) {
 	for i, r := range m.form {
 		if r.field.Type != templates.TypeNumber {
 			continue
@@ -294,7 +295,7 @@ func (m Model) submit() (tea.Model, tea.Cmd) {
 	return m, func() tea.Msg { return InsertMsg{Text: text} }
 }
 
-// View implements tea.Model.
+// View renders the picker or the form.
 func (m Model) View() string {
 	var lines []string
 	if m.state == stateForm {

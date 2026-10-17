@@ -7,11 +7,12 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/llysyganicz/clipt/internal/notes"
 	"github.com/llysyganicz/clipt/internal/ui/finder"
 	"github.com/llysyganicz/clipt/internal/ui/picker"
+	"github.com/llysyganicz/clipt/internal/ui/uitest"
 )
 
 func mkdir(t *testing.T, names ...string) string {
@@ -37,10 +38,10 @@ func feed(m Model, msg tea.Msg) (Model, tea.Msg) {
 }
 
 // press sends a key and re-delivers resulting app-level messages until quiet.
-func press(m Model, keys ...tea.KeyType) (Model, bool) {
+func press(m Model, keys ...string) (Model, bool) {
 	quit := false
 	for _, k := range keys {
-		msg := tea.Msg(tea.KeyMsg{Type: k})
+		msg := tea.Msg(uitest.Key(k))
 		for msg != nil {
 			var out tea.Msg
 			m, out = feed(m, msg)
@@ -59,11 +60,11 @@ func press(m Model, keys ...tea.KeyType) (Model, bool) {
 func TestSwitcherToggle(t *testing.T) {
 	dir := mkdir(t, "c", "b", "a") // a newest
 	m := New(dir)
-	m, _ = press(m, tea.KeyEnter) // open a
+	m, _ = press(m, "enter") // open a
 	if m.mode != modePreview || m.current.Name != "a" {
 		t.Fatalf("mode=%v current=%v", m.mode, m.current)
 	}
-	m, _ = press(m, tea.KeyEsc) // back to finder
+	m, _ = press(m, "esc") // back to finder
 	if m.mode != modeFinder {
 		t.Fatalf("mode = %v", m.mode)
 	}
@@ -71,7 +72,7 @@ func TestSwitcherToggle(t *testing.T) {
 	if rows[0].Note.Name != "b" {
 		t.Errorf("top row = %q, want b", rows[0].Note.Name)
 	}
-	m, _ = press(m, tea.KeyEnter) // open b; a now next
+	m, _ = press(m, "enter") // open b; a now next
 	if m.current.Name != "b" {
 		t.Errorf("current = %q", m.current.Name)
 	}
@@ -79,7 +80,7 @@ func TestSwitcherToggle(t *testing.T) {
 
 func TestEscQuitsWithoutCurrent(t *testing.T) {
 	m := New(mkdir(t, "a"))
-	_, quit := press(m, tea.KeyEsc)
+	_, quit := press(m, "esc")
 	if !quit {
 		t.Error("esc without current note did not quit")
 	}
@@ -87,9 +88,9 @@ func TestEscQuitsWithoutCurrent(t *testing.T) {
 
 func TestEscWithCurrentShowsPreview(t *testing.T) {
 	m := New(mkdir(t, "a", "b"))
-	m, _ = press(m, tea.KeyEnter)
-	m, _ = press(m, tea.KeyEsc)     // note -> finder
-	m, quit := press(m, tea.KeyEsc) // finder -> preview of current
+	m, _ = press(m, "enter")
+	m, _ = press(m, "esc")     // note -> finder
+	m, quit := press(m, "esc") // finder -> preview of current
 	if quit || m.mode != modePreview || m.current == nil {
 		t.Errorf("mode=%v quit=%v", m.mode, quit)
 	}
@@ -98,17 +99,17 @@ func TestEscWithCurrentShowsPreview(t *testing.T) {
 func TestCurrentDisappeared(t *testing.T) {
 	dir := mkdir(t, "a", "b")
 	m := New(dir)
-	m, _ = press(m, tea.KeyEnter) // open b
-	m, _ = press(m, tea.KeyEsc)
+	m, _ = press(m, "enter") // open b
+	m, _ = press(m, "esc")
 	os.Remove(filepath.Join(dir, "b.md"))
-	m, quit := press(m, tea.KeyEsc)
+	m, quit := press(m, "esc")
 	if quit || m.mode != modeFinder || m.current != nil {
 		t.Fatalf("mode=%v current=%v quit=%v", m.mode, m.current, quit)
 	}
-	if v := m.View(); !strings.Contains(v, "no longer exists") {
+	if v := view(m); !strings.Contains(v, "no longer exists") {
 		t.Errorf("view lacks error:\n%s", v)
 	}
-	if _, quit := press(m, tea.KeyEsc); !quit {
+	if _, quit := press(m, "esc"); !quit {
 		t.Error("esc after clearing current should quit")
 	}
 }
@@ -116,9 +117,8 @@ func TestCurrentDisappeared(t *testing.T) {
 func TestCreateOpensNote(t *testing.T) {
 	dir := mkdir(t)
 	m := New(dir)
-	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("new")})
-	m = nm.(Model)
-	m, _ = press(m, tea.KeyEnter)
+	m = typed(m, "new")
+	m, _ = press(m, "enter")
 	if m.mode != modeEdit || m.current == nil || m.current.Name != "new" {
 		t.Errorf("mode=%v current=%v", m.mode, m.current)
 	}
@@ -129,7 +129,7 @@ func TestCreateOpensNote(t *testing.T) {
 
 func TestPickerStartupCancelQuits(t *testing.T) {
 	m := NewPicker("", "")
-	_, quit := press(m, tea.KeyEsc)
+	_, quit := press(m, "esc")
 	if !quit {
 		t.Error("esc at startup picker did not quit")
 	}
@@ -146,7 +146,7 @@ func TestPickerStartupAccept(t *testing.T) {
 
 func openPickerFromFinder(t *testing.T, m Model) Model {
 	t.Helper()
-	m, _ = press(m, tea.KeyCtrlO)
+	m, _ = press(m, "ctrl+o")
 	if m.mode != modePicker || m.pickerFrom != picker.Finder {
 		t.Fatalf("mode=%v from=%v", m.mode, m.pickerFrom)
 	}
@@ -155,13 +155,12 @@ func openPickerFromFinder(t *testing.T, m Model) Model {
 
 func TestPickerEscRestoresFinder(t *testing.T) {
 	m := New(mkdir(t, "a", "b"))
-	m, _ = press(m, tea.KeyEnter)
-	m, _ = press(m, tea.KeyEsc)
-	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("zz")})
-	m = nm.(Model)
+	m, _ = press(m, "enter")
+	m, _ = press(m, "esc")
+	m = typed(m, "zz")
 	cur := m.current
 	m = openPickerFromFinder(t, m)
-	m, quit := press(m, tea.KeyEsc)
+	m, quit := press(m, "esc")
 	if quit || m.mode != modeFinder || m.current != cur || m.finder.Query() != "zz" {
 		t.Errorf("mode=%v quit=%v query=%q", m.mode, quit, m.finder.Query())
 	}
@@ -170,15 +169,15 @@ func TestPickerEscRestoresFinder(t *testing.T) {
 func TestDirChangeClearsCurrent(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	m := New(mkdir(t, "a", "b"))
-	m, _ = press(m, tea.KeyEnter)
-	m, _ = press(m, tea.KeyEsc)
+	m, _ = press(m, "enter")
+	m, _ = press(m, "esc")
 	m = openPickerFromFinder(t, m)
 	other := mkdir(t, "x")
 	m, _ = feed(m, picker.DirAcceptedMsg{Dir: other})
 	if m.current != nil || m.dir != other || m.finder.Query() != "" {
 		t.Errorf("current=%v dir=%q query=%q", m.current, m.dir, m.finder.Query())
 	}
-	if _, quit := press(m, tea.KeyEsc); !quit {
+	if _, quit := press(m, "esc"); !quit {
 		t.Error("esc should quit after dir change")
 	}
 }
@@ -186,8 +185,8 @@ func TestDirChangeClearsCurrent(t *testing.T) {
 func TestSameDirKeepsCurrent(t *testing.T) {
 	dir := mkdir(t, "a", "b")
 	m := New(dir)
-	m, _ = press(m, tea.KeyEnter)
-	m, _ = press(m, tea.KeyEsc)
+	m, _ = press(m, "enter")
+	m, _ = press(m, "esc")
 	m = openPickerFromFinder(t, m)
 	m, _ = feed(m, picker.DirAcceptedMsg{Dir: dir})
 	if m.current == nil || m.current.Name != "b" {
@@ -213,10 +212,10 @@ func TestOpenAndCreatedSetCurrent(t *testing.T) {
 }
 
 func TestNewPickerPrefill(t *testing.T) {
-	if v := NewPicker("", "").View(); !strings.Contains(v, "~/notes") {
+	if v := view(NewPicker("", "")); !strings.Contains(v, "~/notes") {
 		t.Errorf("first run view lacks ~/notes:\n%s", v)
 	}
-	v := NewPicker("/mnt/gone", "directory does not exist: /mnt/gone").View()
+	v := view(NewPicker("/mnt/gone", "directory does not exist: /mnt/gone"))
 	if !strings.Contains(v, "/mnt/gone") || !strings.Contains(v, "does not exist") {
 		t.Errorf("stale view:\n%s", v)
 	}
@@ -255,22 +254,35 @@ func deliver(m Model, msg tea.Msg) (Model, bool) {
 	return m, quit
 }
 
-func rune1(r rune) tea.Msg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}} }
+func rune1(r rune) tea.Msg { return uitest.Key(string(r)) }
+
+// typed types s character by character without re-delivering any resulting
+// message.
+func typed(m Model, s string) Model {
+	for _, k := range uitest.Type(s) {
+		nm, _ := m.Update(k)
+		m = nm.(Model)
+	}
+	return m
+}
+
+// view renders m without escape codes.
+func view(m Model) string { return uitest.Strip(m.View().Content) }
 
 func TestRenameUpdatesCurrent(t *testing.T) {
 	dir := mkdir(t, "todo")
 	m := New(dir)
-	m, _ = press(m, tea.KeyEnter)
+	m, _ = press(m, "enter")
 	m, _ = deliver(m, rune1('r'))
 	m, _ = deliver(m, rune1('2'))
-	m, _ = deliver(m, tea.KeyMsg{Type: tea.KeyEnter})
+	m, _ = deliver(m, uitest.Key("enter"))
 	if m.mode != modePreview || m.current == nil || m.current.Name != "todo2" {
 		t.Fatalf("mode=%v current=%v", m.mode, m.current)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "todo2.md")); err != nil {
 		t.Error(err)
 	}
-	m, _ = press(m, tea.KeyEsc) // back to finder, renamed note hidden
+	m, _ = press(m, "esc") // back to finder, renamed note hidden
 	if m.mode != modeFinder || m.finder.Query() != "" {
 		t.Fatalf("mode=%v query=%q", m.mode, m.finder.Query())
 	}
@@ -284,7 +296,7 @@ func TestRenameUpdatesCurrent(t *testing.T) {
 func TestDeleteClearsCurrent(t *testing.T) {
 	dir := mkdir(t, "keep", "todo") // todo newest
 	m := New(dir)
-	m, _ = press(m, tea.KeyEnter)
+	m, _ = press(m, "enter")
 	m, _ = deliver(m, rune1('d'))
 	m, _ = deliver(m, rune1('y'))
 	if m.mode != modeFinder || m.current != nil || m.finder.Query() != "" {
@@ -297,19 +309,19 @@ func TestDeleteClearsCurrent(t *testing.T) {
 	if len(rows) != 1 || rows[0].Note.Name != "keep" {
 		t.Errorf("rows = %v", rows)
 	}
-	if _, quit := press(m, tea.KeyEsc); !quit {
+	if _, quit := press(m, "esc"); !quit {
 		t.Error("esc should quit with no current note")
 	}
 }
 
 func TestPreviewBackEmptyQuery(t *testing.T) {
 	m := New(mkdir(t, "a", "b"))
-	m, _ = press(m, tea.KeyEnter)
-	m, _ = press(m, tea.KeyEsc) // finder
+	m, _ = press(m, "enter")
+	m, _ = press(m, "esc") // finder
 	nm, _ := m.Update(rune1('x'))
 	m = nm.(Model)
-	m, _ = press(m, tea.KeyEsc) // preview of current
-	m, _ = press(m, tea.KeyEsc) // finder again
+	m, _ = press(m, "esc") // preview of current
+	m, _ = press(m, "esc") // finder again
 	if m.mode != modeFinder || m.finder.Query() != "" || m.current == nil {
 		t.Errorf("mode=%v query=%q current=%v", m.mode, m.finder.Query(), m.current)
 	}
@@ -319,26 +331,26 @@ func TestUnreadableNoteReturnsToFinder(t *testing.T) {
 	dir := mkdir(t, "a", "b")
 	m := New(dir)
 	os.Remove(filepath.Join(dir, "b.md")) // listed, then removed
-	m, _ = press(m, tea.KeyEnter)
+	m, _ = press(m, "enter")
 	if m.mode != modeFinder || m.current != nil {
 		t.Fatalf("mode=%v current=%v", m.mode, m.current)
 	}
-	if v := m.View(); !strings.Contains(v, "cannot read") || !strings.Contains(v, "b") {
+	if v := view(m); !strings.Contains(v, "cannot read") || !strings.Contains(v, "b") {
 		t.Errorf("view lacks error:\n%s", v)
 	}
 }
 
 func TestEditReturnsToPreview(t *testing.T) {
 	m := New(mkdir(t, "a"))
-	m, _ = press(m, tea.KeyEnter)
+	m, _ = press(m, "enter")
 	m, _ = deliver(m, rune1('e'))
 	if m.mode != modeEdit {
 		t.Fatalf("mode=%v", m.mode)
 	}
-	if v := m.View(); !strings.Contains(v, "esc save & back") {
+	if v := view(m); !strings.Contains(v, "esc save & back") {
 		t.Errorf("editor view lacks hint:\n%s", v)
 	}
-	m, _ = press(m, tea.KeyEsc)
+	m, _ = press(m, "esc")
 	if m.mode != modePreview || m.current == nil || m.current.Name != "a" {
 		t.Errorf("mode=%v current=%v", m.mode, m.current)
 	}
@@ -347,18 +359,17 @@ func TestEditReturnsToPreview(t *testing.T) {
 func TestCreateTypeEscShowsPreview(t *testing.T) {
 	dir := mkdir(t)
 	m := New(dir)
-	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("ideas")})
-	m = nm.(Model)
-	m, _ = press(m, tea.KeyEnter)
+	m = typed(m, "ideas")
+	m, _ = press(m, "enter")
 	if m.mode != modeEdit {
 		t.Fatalf("mode=%v", m.mode)
 	}
-	m, _ = deliver(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("# Brainstorm")})
-	m, _ = press(m, tea.KeyEsc)
+	m = typed(m, "# Brainstorm")
+	m, _ = press(m, "esc")
 	if m.mode != modePreview || m.current == nil || m.current.Name != "ideas" {
 		t.Fatalf("mode=%v current=%v", m.mode, m.current)
 	}
-	if v := m.View(); !strings.Contains(v, "Brainstorm") || !strings.Contains(v, "ideas") {
+	if v := view(m); !strings.Contains(v, "Brainstorm") || !strings.Contains(v, "ideas") {
 		t.Errorf("preview lacks typed content or name:\n%s", v)
 	}
 	if b, err := os.ReadFile(filepath.Join(dir, "ideas.md")); err != nil || string(b) != "# Brainstorm\n" {
@@ -369,13 +380,13 @@ func TestCreateTypeEscShowsPreview(t *testing.T) {
 func TestEditUnreadableReturnsToFinder(t *testing.T) {
 	dir := mkdir(t, "a")
 	m := New(dir)
-	m, _ = press(m, tea.KeyEnter)
+	m, _ = press(m, "enter")
 	os.Remove(filepath.Join(dir, "a.md"))
 	m, _ = deliver(m, rune1('e'))
 	if m.mode != modeFinder || m.current != nil {
 		t.Fatalf("mode=%v current=%v", m.mode, m.current)
 	}
-	if v := m.View(); !strings.Contains(v, "cannot read") {
+	if v := view(m); !strings.Contains(v, "cannot read") {
 		t.Errorf("view lacks error:\n%s", v)
 	}
 }
@@ -383,13 +394,13 @@ func TestEditUnreadableReturnsToFinder(t *testing.T) {
 func TestResizeReachesEditor(t *testing.T) {
 	m := New(mkdir(t, "a"))
 	m, _ = feed(m, tea.WindowSizeMsg{Width: 60, Height: 12})
-	m, _ = press(m, tea.KeyEnter)
+	m, _ = press(m, "enter")
 	m, _ = deliver(m, rune1('e'))
-	if got := strings.Count(m.View(), "\n") + 1; got != 12 {
+	if got := strings.Count(view(m), "\n") + 1; got != 12 {
 		t.Errorf("editor height = %d, want 12", got)
 	}
 	m, _ = feed(m, tea.WindowSizeMsg{Width: 60, Height: 8})
-	if got := strings.Count(m.View(), "\n") + 1; got != 8 {
+	if got := strings.Count(view(m), "\n") + 1; got != 8 {
 		t.Errorf("after resize height = %d, want 8", got)
 	}
 }
@@ -397,12 +408,12 @@ func TestResizeReachesEditor(t *testing.T) {
 func TestResizeReachesPreview(t *testing.T) {
 	m := New(mkdir(t, "a"))
 	m, _ = feed(m, tea.WindowSizeMsg{Width: 60, Height: 12})
-	m, _ = press(m, tea.KeyEnter)
-	if got := strings.Count(m.View(), "\n") + 1; got != 12 {
+	m, _ = press(m, "enter")
+	if got := strings.Count(view(m), "\n") + 1; got != 12 {
 		t.Errorf("preview height = %d, want 12", got)
 	}
 	m, _ = feed(m, tea.WindowSizeMsg{Width: 60, Height: 8})
-	if got := strings.Count(m.View(), "\n") + 1; got != 8 {
+	if got := strings.Count(view(m), "\n") + 1; got != 8 {
 		t.Errorf("after resize height = %d, want 8", got)
 	}
 }
@@ -437,7 +448,7 @@ func TestFinderScopeToggle(t *testing.T) {
 	addTemplates(t, dir, map[string]string{"meeting": "# m\n"}, "meeting")
 	m := New(dir)
 	m = typeRunes(m, "to")
-	m, _ = press(m, tea.KeyCtrlT)
+	m, _ = press(m, "ctrl+t")
 	if m.mode != modeFinder || m.finder.Scope() != finder.ScopeTemplates || m.finder.Query() != "" {
 		t.Fatalf("mode=%v scope=%v query=%q", m.mode, m.finder.Scope(), m.finder.Query())
 	}
@@ -445,10 +456,10 @@ func TestFinderScopeToggle(t *testing.T) {
 	if len(rows) != 1 || rows[0].Note.Name != "meeting" {
 		t.Errorf("template rows = %v", rows)
 	}
-	if v := m.View(); !strings.Contains(v, "templates> ") {
+	if v := view(m); !strings.Contains(v, "templates> ") {
 		t.Errorf("view lacks the template prompt:\n%s", v)
 	}
-	m, _ = press(m, tea.KeyCtrlT)
+	m, _ = press(m, "ctrl+t")
 	if m.finder.Scope() != finder.ScopeNotes || m.finder.Query() != "" {
 		t.Errorf("scope=%v query=%q after toggling back", m.finder.Scope(), m.finder.Query())
 	}
@@ -459,8 +470,8 @@ func TestFinderScopeToggle(t *testing.T) {
 
 func TestTemplateScopeEscReturnsToNotes(t *testing.T) {
 	m := New(mkdir(t, "todo"))
-	m, _ = press(m, tea.KeyCtrlT)
-	m, quit := press(m, tea.KeyEsc)
+	m, _ = press(m, "ctrl+t")
+	m, quit := press(m, "esc")
 	if quit || m.mode != modeFinder || m.finder.Scope() != finder.ScopeNotes {
 		t.Errorf("quit=%v mode=%v scope=%v", quit, m.mode, m.finder.Scope())
 	}
@@ -470,22 +481,22 @@ func TestEditTemplateKeepsCurrent(t *testing.T) {
 	dir := mkdir(t, "todo")
 	addTemplates(t, dir, map[string]string{"meeting": "# m\n"}, "meeting")
 	m := New(dir)
-	m, _ = press(m, tea.KeyEnter) // todo is current
-	m, _ = press(m, tea.KeyEsc)
-	m, _ = press(m, tea.KeyCtrlT)
-	m, _ = press(m, tea.KeyEnter) // open meeting
+	m, _ = press(m, "enter") // todo is current
+	m, _ = press(m, "esc")
+	m, _ = press(m, "ctrl+t")
+	m, _ = press(m, "enter") // open meeting
 	if m.mode != modeEdit || m.current == nil || m.current.Name != "todo" {
 		t.Fatalf("mode=%v current=%v", m.mode, m.current)
 	}
-	if v := m.View(); !strings.Contains(v, "template: meeting") || strings.Contains(v, "ctrl+t") {
+	if v := view(m); !strings.Contains(v, "template: meeting") || strings.Contains(v, "ctrl+t") {
 		t.Errorf("editor view:\n%s", v)
 	}
-	m, _ = press(m, tea.KeyCtrlT) // nothing on a template
+	m, _ = press(m, "ctrl+t") // nothing on a template
 	if m.mode != modeEdit {
 		t.Errorf("ctrl+t on a template changed mode to %v", m.mode)
 	}
 	m = typeRunes(m, "\n- a")
-	m, _ = press(m, tea.KeyEsc)
+	m, _ = press(m, "esc")
 	if m.mode != modeFinder || m.finder.Scope() != finder.ScopeTemplates || m.finder.Query() != "" {
 		t.Fatalf("mode=%v scope=%v query=%q", m.mode, m.finder.Scope(), m.finder.Query())
 	}
@@ -504,23 +515,23 @@ func TestEditTemplateKeepsCurrent(t *testing.T) {
 func TestCreateTemplateFromFinder(t *testing.T) {
 	dir := mkdir(t, "todo")
 	m := New(dir)
-	m, _ = press(m, tea.KeyCtrlT)
+	m, _ = press(m, "ctrl+t")
 	m = typeRunes(m, "meeting")
-	m, _ = press(m, tea.KeyEnter)
+	m, _ = press(m, "enter")
 	if m.mode != modeEdit || m.current != nil {
 		t.Fatalf("mode=%v current=%v", m.mode, m.current)
 	}
-	if v := m.View(); !strings.Contains(v, "{{title}}") || !strings.Contains(v, "template: meeting") {
+	if v := view(m); !strings.Contains(v, "{{title}}") || !strings.Contains(v, "template: meeting") {
 		t.Errorf("editor view:\n%s", v)
 	}
-	m, _ = press(m, tea.KeyEsc)
+	m, _ = press(m, "esc")
 	if m.mode != modeFinder || m.finder.Scope() != finder.ScopeTemplates {
 		t.Fatalf("mode=%v scope=%v", m.mode, m.finder.Scope())
 	}
 	if rows := m.finder.Rows(); len(rows) != 1 || rows[0].Note.Name != "meeting" {
 		t.Errorf("template rows = %v", rows)
 	}
-	m, _ = press(m, tea.KeyCtrlT)
+	m, _ = press(m, "ctrl+t")
 	if rows := m.finder.Rows(); len(rows) != 1 || rows[0].Note.Name != "todo" {
 		t.Errorf(".templates leaked into notes: %v", rows)
 	}
@@ -528,9 +539,9 @@ func TestCreateTemplateFromFinder(t *testing.T) {
 
 func TestChangeDirFromTemplateScope(t *testing.T) {
 	m := New(mkdir(t, "todo"))
-	m, _ = press(m, tea.KeyCtrlT)
+	m, _ = press(m, "ctrl+t")
 	m = openPickerFromFinder(t, m)
-	m, quit := press(m, tea.KeyEsc)
+	m, quit := press(m, "esc")
 	if quit || m.mode != modeFinder || m.finder.Scope() != finder.ScopeNotes {
 		t.Errorf("quit=%v mode=%v scope=%v", quit, m.mode, m.finder.Scope())
 	}
@@ -540,18 +551,18 @@ func TestUnreadableTemplateKeepsScopeAndCurrent(t *testing.T) {
 	dir := mkdir(t, "todo")
 	addTemplates(t, dir, map[string]string{"meeting": "# m\n"}, "meeting")
 	m := New(dir)
-	m, _ = press(m, tea.KeyEnter)
-	m, _ = press(m, tea.KeyEsc)
-	m, _ = press(m, tea.KeyCtrlT)
+	m, _ = press(m, "enter")
+	m, _ = press(m, "esc")
+	m, _ = press(m, "ctrl+t")
 	os.Remove(filepath.Join(dir, ".templates", "meeting.md"))
-	m, _ = press(m, tea.KeyEnter)
+	m, _ = press(m, "enter")
 	if m.mode != modeFinder || m.finder.Scope() != finder.ScopeTemplates {
 		t.Fatalf("mode=%v scope=%v", m.mode, m.finder.Scope())
 	}
 	if m.current == nil || m.current.Name != "todo" {
 		t.Errorf("current = %v", m.current)
 	}
-	if v := m.View(); !strings.Contains(v, "cannot read") || !strings.Contains(v, "meeting") {
+	if v := view(m); !strings.Contains(v, "cannot read") || !strings.Contains(v, "meeting") {
 		t.Errorf("view lacks error:\n%s", v)
 	}
 }
@@ -567,9 +578,9 @@ func openNoteForInsert(t *testing.T, files map[string]string, order ...string) (
 	addTemplates(t, dir, files, order...)
 	m := New(dir)
 	m, _ = feed(m, tea.WindowSizeMsg{Width: 60, Height: 12})
-	m, _ = press(m, tea.KeyEnter)
+	m, _ = press(m, "enter")
 	m, _ = deliver(m, rune1('e'))
-	m, _ = press(m, tea.KeyLeft)
+	m, _ = press(m, "left")
 	if m.mode != modeEdit {
 		t.Fatalf("mode = %v", m.mode)
 	}
@@ -579,30 +590,30 @@ func openNoteForInsert(t *testing.T, files map[string]string, order ...string) (
 func TestInsertTemplateWithForm(t *testing.T) {
 	tpl := "---\nform:\n  - name: topic\n    type: text\n  - name: prio\n    type: option\n    options: [low, high]\n---\n# {{topic}} ({{prio}})\n- "
 	m, dir := openNoteForInsert(t, map[string]string{"meeting": tpl, "daily": "x"}, "daily", "meeting")
-	m, _ = press(m, tea.KeyCtrlT)
+	m, _ = press(m, "ctrl+t")
 	if m.mode != modeTemplate {
 		t.Fatalf("mode = %v", m.mode)
 	}
-	if v := m.View(); !strings.Contains(v, "meeting") || !strings.Contains(v, "daily") {
+	if v := view(m); !strings.Contains(v, "meeting") || !strings.Contains(v, "daily") {
 		t.Errorf("picker view:\n%s", v)
 	}
-	if got := strings.Count(m.View(), "\n") + 1; got != 12 {
+	if got := strings.Count(view(m), "\n") + 1; got != 12 {
 		t.Errorf("picker height = %d, want 12", got)
 	}
-	m, _ = press(m, tea.KeyEnter) // meeting (newest) opens the form
+	m, _ = press(m, "enter") // meeting (newest) opens the form
 	if m.mode != modeTemplate || !m.tmpl.InForm() {
 		t.Fatalf("mode=%v form=%v", m.mode, m.tmpl.InForm())
 	}
 	m = typeRunes(m, "Standup")
-	m, _ = press(m, tea.KeyEnter, tea.KeyRight, tea.KeyEnter)
+	m, _ = press(m, "enter", "right", "enter")
 	if m.mode != modeEdit {
 		t.Fatalf("mode after submit = %v", m.mode)
 	}
-	if v := m.View(); !strings.Contains(v, "# Standup (high)") || !strings.Contains(v, "esc save & back") {
+	if v := view(m); !strings.Contains(v, "# Standup (high)") || !strings.Contains(v, "esc save & back") {
 		t.Errorf("editor view:\n%s", v)
 	}
 	m = typeRunes(m, "X") // cursor is right after the inserted "- "
-	m, _ = press(m, tea.KeyEsc)
+	m, _ = press(m, "esc")
 	if m.mode != modePreview {
 		t.Errorf("mode after esc = %v", m.mode)
 	}
@@ -614,11 +625,11 @@ func TestInsertTemplateWithForm(t *testing.T) {
 
 func TestInsertFieldlessTemplate(t *testing.T) {
 	m, dir := openNoteForInsert(t, map[string]string{"daily": "# Daily\n\n- [ ] \n"}, "daily")
-	m, _ = press(m, tea.KeyCtrlT, tea.KeyEnter)
+	m, _ = press(m, "ctrl+t", "enter")
 	if m.mode != modeEdit {
 		t.Fatalf("mode = %v", m.mode)
 	}
-	m, _ = press(m, tea.KeyEsc)
+	m, _ = press(m, "esc")
 	b, _ := os.ReadFile(filepath.Join(dir, "n.md"))
 	if string(b) != "a# Daily\n\n- [ ] b\n" {
 		t.Errorf("n.md = %q", b)
@@ -629,22 +640,22 @@ func TestInsertCancelLeavesEditorUntouched(t *testing.T) {
 	for _, enter := range []bool{false, true} {
 		tpl := "---\nform:\n  - name: topic\n    type: text\n---\n# {{topic}}\n"
 		m, dir := openNoteForInsert(t, map[string]string{"meeting": tpl}, "meeting")
-		m, _ = press(m, tea.KeyCtrlT)
+		m, _ = press(m, "ctrl+t")
 		if enter {
-			m, _ = press(m, tea.KeyEnter)
+			m, _ = press(m, "enter")
 			m = typeRunes(m, "typed")
 		} else {
 			m = typeRunes(m, "me")
 		}
-		m, quit := press(m, tea.KeyEsc)
+		m, quit := press(m, "esc")
 		if quit || m.mode != modeEdit {
 			t.Fatalf("enter=%v: quit=%v mode=%v", enter, quit, m.mode)
 		}
-		if v := m.View(); !strings.Contains(v, "esc save & back") || strings.Contains(v, "typed") {
+		if v := view(m); !strings.Contains(v, "esc save & back") || strings.Contains(v, "typed") {
 			t.Errorf("editor view:\n%s", v)
 		}
 		m = typeRunes(m, "X") // cursor still between a and b
-		m, _ = press(m, tea.KeyEsc)
+		m, _ = press(m, "esc")
 		b, _ := os.ReadFile(filepath.Join(dir, "n.md"))
 		if string(b) != "aXb\n" {
 			t.Errorf("enter=%v: n.md = %q", enter, b)
@@ -657,7 +668,7 @@ func TestInsertCancelWithoutTypingDoesNotWrite(t *testing.T) {
 	p := filepath.Join(dir, "n.md")
 	old := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	os.Chtimes(p, old, old)
-	m, _ = press(m, tea.KeyCtrlT, tea.KeyEsc, tea.KeyEsc)
+	m, _ = press(m, "ctrl+t", "esc", "esc")
 	if m.mode != modePreview {
 		t.Fatalf("mode = %v", m.mode)
 	}
@@ -668,13 +679,13 @@ func TestInsertCancelWithoutTypingDoesNotWrite(t *testing.T) {
 
 func TestInsertModeResize(t *testing.T) {
 	m, _ := openNoteForInsert(t, map[string]string{"meeting": "x"}, "meeting")
-	m, _ = press(m, tea.KeyCtrlT)
+	m, _ = press(m, "ctrl+t")
 	m, _ = feed(m, tea.WindowSizeMsg{Width: 60, Height: 8})
-	if got := strings.Count(m.View(), "\n") + 1; got != 8 {
+	if got := strings.Count(view(m), "\n") + 1; got != 8 {
 		t.Errorf("picker height after resize = %d, want 8", got)
 	}
-	m, _ = press(m, tea.KeyEsc)
-	if got := strings.Count(m.View(), "\n") + 1; got != 8 {
+	m, _ = press(m, "esc")
+	if got := strings.Count(view(m), "\n") + 1; got != 8 {
 		t.Errorf("editor height after resize = %d, want 8", got)
 	}
 }
@@ -683,12 +694,12 @@ func TestCtrlQFromTemplateFormSavesNoteAndQuits(t *testing.T) {
 	tpl := "---\nform:\n  - name: topic\n    type: text\n---\n# {{topic}}\n"
 	m, dir := openNoteForInsert(t, map[string]string{"meeting": tpl}, "meeting")
 	m = typeRunes(m, "X") // note is now aXb
-	m, _ = press(m, tea.KeyCtrlT, tea.KeyEnter)
+	m, _ = press(m, "ctrl+t", "enter")
 	if m.mode != modeTemplate || !m.tmpl.InForm() {
 		t.Fatalf("mode=%v form=%v", m.mode, m.tmpl.InForm())
 	}
 	m = typeRunes(m, "typed")
-	m, quit := press(m, tea.KeyCtrlQ)
+	m, quit := press(m, "ctrl+q")
 	if !quit {
 		t.Error("ctrl+q from the form did not quit")
 	}
@@ -704,7 +715,7 @@ func TestCtrlQFromTemplatePickerWithFailingWrite(t *testing.T) {
 	}
 	m, dir := openNoteForInsert(t, map[string]string{"meeting": "x"}, "meeting")
 	m = typeRunes(m, "X")
-	m, _ = press(m, tea.KeyCtrlT)
+	m, _ = press(m, "ctrl+t")
 	p := filepath.Join(dir, "n.md")
 	if err := os.Chmod(p, 0o444); err != nil {
 		t.Fatal(err)
@@ -713,11 +724,11 @@ func TestCtrlQFromTemplatePickerWithFailingWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.Chmod(dir, 0o755); os.Chmod(p, 0o644) })
-	m, quit := press(m, tea.KeyCtrlQ)
+	m, quit := press(m, "ctrl+q")
 	if quit || m.mode != modeEdit {
 		t.Fatalf("quit=%v mode=%v", quit, m.mode)
 	}
-	if v := m.View(); !strings.Contains(v, "permission denied") || !strings.Contains(v, "aXb") {
+	if v := view(m); !strings.Contains(v, "permission denied") || !strings.Contains(v, "aXb") {
 		t.Errorf("editor view:\n%s", v)
 	}
 	b, _ := os.ReadFile(p)
@@ -729,20 +740,42 @@ func TestCtrlQFromTemplatePickerWithFailingWrite(t *testing.T) {
 func TestCtrlQQuitsFromFinderPreviewAndEditor(t *testing.T) {
 	dir := mkdir(t, "a")
 	m := New(dir)
-	if _, quit := press(m, tea.KeyCtrlQ); !quit {
+	if _, quit := press(m, "ctrl+q"); !quit {
 		t.Error("finder: ctrl+q did not quit")
 	}
-	m, _ = press(m, tea.KeyEnter)
-	if _, quit := press(m, tea.KeyCtrlQ); !quit {
+	m, _ = press(m, "enter")
+	if _, quit := press(m, "ctrl+q"); !quit {
 		t.Error("preview: ctrl+q did not quit")
 	}
 	m, _ = deliver(m, rune1('e'))
 	m = typeRunes(m, "hi")
-	if _, quit := press(m, tea.KeyCtrlQ); !quit {
+	if _, quit := press(m, "ctrl+q"); !quit {
 		t.Error("editor: ctrl+q did not quit")
 	}
 	b, _ := os.ReadFile(filepath.Join(dir, "a.md"))
 	if string(b) != "hi\n" {
 		t.Errorf("a.md = %q", b)
+	}
+}
+
+func TestViewUsesAltScreen(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "a.md"), []byte("# A\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m := New(dir)
+	if !m.View().AltScreen {
+		t.Error("finder view is not in the alt screen")
+	}
+	m, _ = press(m, "enter")
+	if m.mode != modePreview || !m.View().AltScreen {
+		t.Errorf("preview: mode=%v alt=%v", m.mode, m.View().AltScreen)
+	}
+	m, _ = deliver(m, rune1('e'))
+	if m.mode != modeEdit || !m.View().AltScreen {
+		t.Errorf("edit: mode=%v alt=%v", m.mode, m.View().AltScreen)
+	}
+	if !strings.Contains(view(m), "# A") {
+		t.Errorf("edit view lacks the note:\n%s", view(m))
 	}
 }

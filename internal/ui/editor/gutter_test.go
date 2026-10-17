@@ -4,8 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/charmbracelet/bubbles/textarea"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/textarea"
 )
 
 // TestWrapRowsMatchTextArea guards the copied wrap function: for lines that
@@ -67,7 +66,7 @@ func TestGutterRows(t *testing.T) {
 			t.Errorf("row %d: cursor = %v (cursor is on the last line)", i, r.cursor)
 		}
 	}
-	m, _ = press(m, tea.KeyUp)
+	m, _ = press(m, "up")
 	if rows := m.gutterRows(); !rows[10].cursor || rows[11].cursor {
 		t.Errorf("after up: cursor flags = %v %v", rows[10].cursor, rows[11].cursor)
 	}
@@ -84,7 +83,7 @@ func TestGutterRows(t *testing.T) {
 	// after it, all flagged as the cursor's line.
 	s = setup(t, map[string]string{"w": "top\n" + strings.Repeat("word ", 30) + "\nend"})
 	m = resize(open(t, s, "w"), 40, 10)
-	m, _ = press(m, tea.KeyUp)
+	m, _ = press(m, "up")
 	rows = m.gutterRows()
 	want := len(wrap([]rune(strings.Repeat("word ", 30)), m.ta.Width()))
 	if want < 2 {
@@ -112,7 +111,7 @@ func textCol(row, text string) int { return strings.Index(row, text) }
 
 func TestGutterAlignsText(t *testing.T) {
 	s := setup(t, map[string]string{"n12": numberedNote(12, "  "), "n120": numberedNote(120, "  ")})
-	rows := strings.Split(resize(open(t, s, "n12"), 80, 20).View(), "\n")
+	rows := strings.Split(view(resize(open(t, s, "n12"), 80, 20)), "\n")
 	if a, b := textCol(rows[8], "- item"), textCol(rows[9], "- item"); a < 0 || a != b {
 		t.Errorf("line 9 text at column %d, line 10 at %d:\n%s\n%s", a, b, rows[8], rows[9])
 	}
@@ -120,7 +119,7 @@ func TestGutterAlignsText(t *testing.T) {
 		t.Errorf("gutters: %q / %q", rows[8][:4], rows[9][:4])
 	}
 
-	rows = strings.Split(resize(open(t, s, "n120"), 80, 200).View(), "\n")
+	rows = strings.Split(view(resize(open(t, s, "n120"), 80, 200)), "\n")
 	if a, b := textCol(rows[98], "- item"), textCol(rows[99], "- item"); a < 0 || a != b {
 		t.Errorf("line 99 text at column %d, line 100 at %d:\n%s\n%s", a, b, rows[98], rows[99])
 	}
@@ -131,7 +130,7 @@ func TestGutterAlignsText(t *testing.T) {
 	// Both rows of a wrapped line start their text in the same column.
 	s = setup(t, map[string]string{"w": strings.Repeat("word ", 12) + "\nend"})
 	m := resize(open(t, s, "w"), 30, 10)
-	rows = strings.Split(m.View(), "\n")
+	rows = strings.Split(view(m), "\n")
 	if textCol(rows[0], "word") != m.gutterW || textCol(rows[1], "word") != m.gutterW {
 		t.Errorf("wrapped rows:\n%q\n%q", rows[0], rows[1])
 	}
@@ -147,12 +146,12 @@ func TestGutterAlignsText(t *testing.T) {
 func TestGutterGrowsWithTheNote(t *testing.T) {
 	s := setup(t, map[string]string{"n9": strings.TrimSuffix(numberedNote(9, ""), "\n")})
 	m := resize(open(t, s, "n9"), 80, 20)
-	rows := strings.Split(m.View(), "\n")
+	rows := strings.Split(view(m), "\n")
 	if m.gutterW != 3 || textCol(rows[0], "- item") != 3 {
 		t.Fatalf("9 lines: width %d, row 1 = %q", m.gutterW, rows[0])
 	}
-	m, _ = press(m, tea.KeyEnter)
-	rows = strings.Split(m.View(), "\n")
+	m, _ = press(m, "enter")
+	rows = strings.Split(view(m), "\n")
 	if m.gutterW != 4 {
 		t.Errorf("10 lines: width %d", m.gutterW)
 	}
@@ -164,7 +163,7 @@ func TestGutterGrowsWithTheNote(t *testing.T) {
 	if !strings.HasPrefix(rows[9], " 10 ") {
 		t.Errorf("row 10 = %q", rows[9])
 	}
-	m, _ = press(m, tea.KeyBackspace)
+	m, _ = press(m, "backspace")
 	if m.gutterW != 3 {
 		t.Errorf("back to 9 lines: width %d", m.gutterW)
 	}

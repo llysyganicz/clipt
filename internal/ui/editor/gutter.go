@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 
+	"charm.land/bubbles/v2/textarea"
+
 	"github.com/llysyganicz/clipt/internal/ui/theme"
 )
 
@@ -76,7 +78,7 @@ func (m *Model) syncGutterWidth() bool {
 	m.gutterW = w
 	// The prompt callback set here only reserves the width; View installs
 	// the one that draws the labels, on its own copy of the text area.
-	m.ta.SetPromptFunc(w, func(int) string { return "" })
+	m.ta.SetPromptFunc(w, func(textarea.PromptInfo) string { return "" })
 	if m.width > 0 {
 		m.ta.SetWidth(m.width)
 	}

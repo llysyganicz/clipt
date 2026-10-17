@@ -4,15 +4,15 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"regexp"
 	"strings"
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/llysyganicz/clipt/internal/notes"
 	"github.com/llysyganicz/clipt/internal/templates"
+	"github.com/llysyganicz/clipt/internal/ui/uitest"
 )
 
 const withFields = "---\nform:\n  - name: topic\n    label: Topic\n    type: text\n  - name: count\n    type: number\n  - name: prio\n    type: option\n    options: [low, high]\n---\n# {{topic}} {{count}} {{prio}}\n"
@@ -45,55 +45,16 @@ func setup(t *testing.T, files []string, contents map[string]string) notes.Store
 	return store
 }
 
-func k(s string) tea.KeyMsg {
-	switch s {
-	case "enter":
-		return tea.KeyMsg{Type: tea.KeyEnter}
-	case "esc":
-		return tea.KeyMsg{Type: tea.KeyEsc}
-	case "up":
-		return tea.KeyMsg{Type: tea.KeyUp}
-	case "down":
-		return tea.KeyMsg{Type: tea.KeyDown}
-	case "left":
-		return tea.KeyMsg{Type: tea.KeyLeft}
-	case "right":
-		return tea.KeyMsg{Type: tea.KeyRight}
-	case "tab":
-		return tea.KeyMsg{Type: tea.KeyTab}
-	case "shift+tab":
-		return tea.KeyMsg{Type: tea.KeyShiftTab}
-	case "ctrl+p":
-		return tea.KeyMsg{Type: tea.KeyCtrlP}
-	case "ctrl+n":
-		return tea.KeyMsg{Type: tea.KeyCtrlN}
-	case "ctrl+c":
-		return tea.KeyMsg{Type: tea.KeyCtrlC}
-	case "ctrl+q":
-		return tea.KeyMsg{Type: tea.KeyCtrlQ}
-	case "backspace":
-		return tea.KeyMsg{Type: tea.KeyBackspace}
-	}
-	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
-}
-
-// press sends keys; a multi-character string that is not a named key is
-// typed rune by rune. It returns the last message produced.
+// press sends keys by name; a string that is not a key name is typed
+// character by character. It returns the last message produced.
 func press(m Model, keys ...string) (Model, tea.Msg) {
 	var out tea.Msg
 	for _, s := range keys {
-		key := k(s)
-		if key.Type == tea.KeyRunes && len(key.Runes) > 1 {
-			for _, r := range key.Runes {
-				nm, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
-				m = nm.(Model)
-				out = run(cmd)
-			}
-			continue
+		for _, key := range uitest.Type(s) {
+			var cmd tea.Cmd
+			m, cmd = m.Update(key)
+			out = run(cmd)
 		}
-		nm, cmd := m.Update(key)
-		m = nm.(Model)
-		out = run(cmd)
 	}
 	return m, out
 }
@@ -123,10 +84,6 @@ func names(rows []notes.Note) []string {
 	}
 	return out
 }
-
-var ansi = regexp.MustCompile("\x1b\\[[0-9;]*m")
-
-func plain(s string) string { return ansi.ReplaceAllString(s, "") }
 
 func TestPickerListsNewestFirst(t *testing.T) {
 	m := New(setup(t, []string{"daily", "meeting"}, nil))
@@ -395,7 +352,7 @@ func TestFormEsc(t *testing.T) {
 func TestViewPicker(t *testing.T) {
 	m := New(setup(t, []string{"daily", "meeting"}, nil))
 	m, _ = press(m, "i")
-	v := plain(m.View())
+	v := uitest.Strip(m.View())
 	lines := strings.Split(v, "\n")
 	if len(lines) != 24 {
 		t.Errorf("height = %d, want 24", len(lines))
@@ -409,17 +366,16 @@ func TestViewPicker(t *testing.T) {
 	if last := lines[len(lines)-1]; !strings.Contains(last, "enter") || !strings.Contains(last, "esc") || !strings.Contains(last, "ctrl+q quit") {
 		t.Errorf("status bar = %q", last)
 	}
-	nm, _ := m.Update(tea.WindowSizeMsg{Width: 40, Height: 5})
-	m = nm.(Model)
-	lines = strings.Split(plain(m.View()), "\n")
+	m, _ = m.Update(tea.WindowSizeMsg{Width: 40, Height: 5})
+	lines = strings.Split(uitest.Strip(m.View()), "\n")
 	if len(lines) != 5 {
 		t.Errorf("height after resize = %d, want 5", len(lines))
 	}
 	if !strings.Contains(lines[1], "meeting") || strings.Contains(m.View(), "daily") {
-		t.Errorf("window not shrunk:\n%s", plain(m.View()))
+		t.Errorf("window not shrunk:\n%s", uitest.Strip(m.View()))
 	}
 	m, _ = press(m, "down")
-	if v := plain(m.View()); !strings.Contains(v, "> daily") || strings.Contains(v, "meeting") {
+	if v := uitest.Strip(m.View()); !strings.Contains(v, "> daily") || strings.Contains(v, "meeting") {
 		t.Errorf("window did not follow the selection:\n%s", v)
 	}
 }
@@ -427,7 +383,7 @@ func TestViewPicker(t *testing.T) {
 func TestViewForm(t *testing.T) {
 	m := openForm(t)
 	m, _ = press(m, "Standup")
-	lines := strings.Split(plain(m.View()), "\n")
+	lines := strings.Split(uitest.Strip(m.View()), "\n")
 	if len(lines) != 24 {
 		t.Errorf("height = %d, want 24", len(lines))
 	}
@@ -447,7 +403,7 @@ func TestViewForm(t *testing.T) {
 		}
 	}
 	m, _ = press(m, "tab", "tab", "right")
-	lines = strings.Split(plain(m.View()), "\n")
+	lines = strings.Split(uitest.Strip(m.View()), "\n")
 	if !strings.HasPrefix(lines[2], "> prio: low < high >") {
 		t.Errorf("row 2 after right = %q", lines[2])
 	}

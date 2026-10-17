@@ -4,15 +4,15 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"regexp"
 	"strings"
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/llysyganicz/clipt/internal/notes"
 	"github.com/llysyganicz/clipt/internal/templates"
+	"github.com/llysyganicz/clipt/internal/ui/uitest"
 )
 
 func newDir(t *testing.T, names ...string) notes.Store {
@@ -30,38 +30,16 @@ func newDir(t *testing.T, names ...string) notes.Store {
 	return notes.Store{Dir: dir}
 }
 
-func k(s string) tea.KeyMsg {
-	switch s {
-	case "enter":
-		return tea.KeyMsg{Type: tea.KeyEnter}
-	case "esc":
-		return tea.KeyMsg{Type: tea.KeyEsc}
-	case "up":
-		return tea.KeyMsg{Type: tea.KeyUp}
-	case "down":
-		return tea.KeyMsg{Type: tea.KeyDown}
-	case "ctrl+p":
-		return tea.KeyMsg{Type: tea.KeyCtrlP}
-	case "ctrl+n":
-		return tea.KeyMsg{Type: tea.KeyCtrlN}
-	case "ctrl+o":
-		return tea.KeyMsg{Type: tea.KeyCtrlO}
-	case "ctrl+c":
-		return tea.KeyMsg{Type: tea.KeyCtrlC}
-	case "ctrl+t":
-		return tea.KeyMsg{Type: tea.KeyCtrlT}
-	case "ctrl+q":
-		return tea.KeyMsg{Type: tea.KeyCtrlQ}
-	}
-	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
-}
-
+// press sends keys by name; a string that is not a key name is typed
+// character by character. It returns the last message produced.
 func press(m Model, keys ...string) (Model, tea.Msg) {
 	var out tea.Msg
 	for _, s := range keys {
-		nm, cmd := m.Update(k(s))
-		m = nm.(Model)
-		out = run(cmd)
+		for _, key := range uitest.Type(s) {
+			var cmd tea.Cmd
+			m, cmd = m.Update(key)
+			out = run(cmd)
+		}
 	}
 	return m, out
 }
@@ -353,7 +331,7 @@ func TestTemplateViewPromptAndHints(t *testing.T) {
 	store := templatesDir(t, nil, []string{"meeting"})
 	v := NewTemplates(templates.Store(store.Dir), "").View()
 	lines := strings.Split(v, "\n")
-	if !strings.HasPrefix(stripANSI(lines[0]), "templates> ") {
+	if !strings.HasPrefix(uitest.Strip(lines[0]), "templates> ") {
 		t.Errorf("prompt line = %q", lines[0])
 	}
 	if !strings.Contains(lines[1], "> meeting") {
@@ -399,10 +377,6 @@ func TestCurrentNoteNotHiddenInTemplateScope(t *testing.T) {
 		t.Errorf("view lacks the template:\n%s", m.View())
 	}
 }
-
-var ansi = regexp.MustCompile("\x1b\\[[0-9;]*m")
-
-func stripANSI(s string) string { return ansi.ReplaceAllString(s, "") }
 
 // run executes a command, giving up quickly on blocking ones (cursor blink).
 func run(cmd tea.Cmd) tea.Msg {

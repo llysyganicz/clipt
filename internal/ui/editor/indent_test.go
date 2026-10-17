@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 func cursorCol(m Model) int {
@@ -16,8 +14,8 @@ func cursorCol(m Model) int {
 func TestTabInsertsTwoSpaces(t *testing.T) {
 	s := setup(t, map[string]string{"todo": "item"})
 	m := open(t, s, "todo")
-	m, _ = press(m, tea.KeyHome)
-	m, _ = press(m, tea.KeyTab)
+	m, _ = press(m, "home")
+	m, _ = press(m, "tab")
 	if got := m.ta.Value(); got != "  item" {
 		t.Errorf("tab at line start: %q", got)
 	}
@@ -31,8 +29,8 @@ func TestTabInsertsTwoSpaces(t *testing.T) {
 
 	s = setup(t, map[string]string{"todo": "ab"})
 	m = open(t, s, "todo")
-	m, _ = press(m, tea.KeyLeft) // between a and b
-	m, _ = press(m, tea.KeyTab)
+	m, _ = press(m, "left") // between a and b
+	m, _ = press(m, "tab")
 	if got := m.ta.Value(); got != "a  b" {
 		t.Errorf("tab inside a line: %q", got)
 	}
@@ -44,9 +42,9 @@ func TestTabInsertsTwoSpaces(t *testing.T) {
 func TestTabIsSaved(t *testing.T) {
 	s := setup(t, map[string]string{"todo": "item\n"})
 	m := open(t, s, "todo")
-	m, _ = press(m, tea.KeyHome)
-	m, _ = press(m, tea.KeyTab)
-	if _, out := press(m, tea.KeyEsc); out != (DoneMsg{}) {
+	m, _ = press(m, "home")
+	m, _ = press(m, "tab")
+	if _, out := press(m, "esc"); out != (DoneMsg{}) {
 		t.Fatalf("esc -> %v", out)
 	}
 	if b, old := file(t, s, "todo"); b != "  item\n" || old {
@@ -69,7 +67,7 @@ func TestShiftTabDedents(t *testing.T) {
 	for _, c := range cases {
 		s := setup(t, map[string]string{"todo": "first\n" + c.line + "\n"})
 		m := open(t, s, "todo") // cursor at the end of the second line
-		m, _ = press(m, tea.KeyShiftTab)
+		m, _ = press(m, "shift+tab")
 		if got := m.ta.Value(); got != "first\n"+c.want {
 			t.Errorf("%q: value = %q, want %q", c.line, got, "first\n"+c.want)
 		}
@@ -81,9 +79,9 @@ func TestShiftTabDedents(t *testing.T) {
 	// A cursor inside the removed spaces lands on the line start.
 	s := setup(t, map[string]string{"todo": "    item"})
 	m := open(t, s, "todo")
-	m, _ = press(m, tea.KeyHome)
-	m, _ = press(m, tea.KeyRight)
-	m, _ = press(m, tea.KeyShiftTab)
+	m, _ = press(m, "home")
+	m, _ = press(m, "right")
+	m, _ = press(m, "shift+tab")
 	if got := m.ta.Value(); got != "  item" {
 		t.Errorf("value = %q", got)
 	}
@@ -95,8 +93,8 @@ func TestShiftTabDedents(t *testing.T) {
 func TestShiftTabIsSavedAndUnchangedIsNot(t *testing.T) {
 	s := setup(t, map[string]string{"todo": "  item\n"})
 	m := open(t, s, "todo")
-	m, _ = press(m, tea.KeyShiftTab)
-	if _, out := press(m, tea.KeyEsc); out != (DoneMsg{}) {
+	m, _ = press(m, "shift+tab")
+	if _, out := press(m, "esc"); out != (DoneMsg{}) {
 		t.Fatalf("esc -> %v", out)
 	}
 	if b, old := file(t, s, "todo"); b != "item\n" || old {
@@ -105,8 +103,8 @@ func TestShiftTabIsSavedAndUnchangedIsNot(t *testing.T) {
 
 	s = setup(t, map[string]string{"todo": "item\n"})
 	m = open(t, s, "todo")
-	m, _ = press(m, tea.KeyShiftTab)
-	if _, out := press(m, tea.KeyEsc); out != (DoneMsg{}) {
+	m, _ = press(m, "shift+tab")
+	if _, out := press(m, "esc"); out != (DoneMsg{}) {
 		t.Fatalf("esc -> %v", out)
 	}
 	if b, old := file(t, s, "todo"); b != "item\n" || !old {
@@ -121,20 +119,38 @@ func TestShiftTabBelowFirstScreenKeepsView(t *testing.T) {
 	}
 	s := setup(t, map[string]string{"long": b.String()})
 	m := resize(open(t, s, "long"), 80, 10) // cursor at the end of line 100
-	m, _ = press(m, tea.KeyShiftTab)
+	m, _ = press(m, "shift+tab")
 	if got := strings.Split(m.ta.Value(), "\n")[99]; got != "line100" {
 		t.Errorf("line 100 = %q", got)
 	}
 	if m.ta.Line() != 99 {
 		t.Errorf("cursor line = %d, want 99", m.ta.Line())
 	}
-	if v := m.View(); !strings.Contains(v, "line100") || strings.Contains(v, "line1 ") {
+	if v := view(m); !strings.Contains(v, "line100") || strings.Contains(v, "line1 ") {
 		t.Errorf("view not on the cursor:\n%s", v)
 	}
-	lines := strings.Split(m.View(), "\n")
+	lines := strings.Split(view(m), "\n")
 	for i, l := range lines[:9] {
 		if strings.TrimSpace(l) == "" {
 			t.Errorf("row %d blank after dedent", i+1)
 		}
+	}
+}
+
+func TestSelectionKeysAreInert(t *testing.T) {
+	s := setup(t, map[string]string{"todo": "ab\ncd"})
+	m := open(t, s, "todo")
+	m, _ = press(m, "up")
+	m, _ = press(m, "home")
+	before, col := m.ta.Value(), cursorCol(m)
+	for _, k := range []string{"shift+right", "shift+left", "shift+down", "shift+up", "ctrl+shift+right", "ctrl+g"} {
+		m, _ = press(m, k)
+		if m.ta.Value() != before || cursorCol(m) != col || m.ta.Line() != 0 {
+			t.Errorf("%s changed the buffer or cursor: %q line %d col %d", k, m.ta.Value(), m.ta.Line(), cursorCol(m))
+		}
+	}
+	m = runes(m, "X")
+	if got := m.ta.Value(); got != "Xab\ncd" {
+		t.Errorf("typing after selection keys: %q", got)
 	}
 }

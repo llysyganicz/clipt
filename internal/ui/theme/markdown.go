@@ -1,8 +1,8 @@
 package theme
 
 import (
-	"github.com/charmbracelet/glamour/ansi"
-	"github.com/charmbracelet/glamour/styles"
+	"charm.land/glamour/v2/ansi"
+	"charm.land/glamour/v2/styles"
 )
 
 func ptr[T any](v T) *T { return &v }

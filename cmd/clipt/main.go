@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/llysyganicz/clipt/internal/config"
 	"github.com/llysyganicz/clipt/internal/ui/app"
@@ -37,6 +37,6 @@ func run() error {
 		}
 		m = app.NewPicker("", "")
 	}
-	_, err = tea.NewProgram(m, tea.WithAltScreen()).Run()
+	_, err = tea.NewProgram(m).Run()
 	return err
 }

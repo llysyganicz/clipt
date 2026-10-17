@@ -7,9 +7,10 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/llysyganicz/clipt/internal/config"
+	"github.com/llysyganicz/clipt/internal/ui/uitest"
 )
 
 func TestExpandPath(t *testing.T) {
@@ -32,22 +33,10 @@ func TestExpandPath(t *testing.T) {
 	}
 }
 
-func key(s string) tea.KeyMsg {
-	switch s {
-	case "enter":
-		return tea.KeyMsg{Type: tea.KeyEnter}
-	case "esc":
-		return tea.KeyMsg{Type: tea.KeyEsc}
-	case "ctrl+q":
-		return tea.KeyMsg{Type: tea.KeyCtrlQ}
-	}
-	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
-}
-
 // send feeds a key and returns the new model and the message its command emits.
 func send(m Model, s string) (Model, tea.Msg) {
-	nm, cmd := m.Update(key(s))
-	return nm.(Model), run(cmd)
+	nm, cmd := m.Update(uitest.Key(s))
+	return nm, run(cmd)
 }
 
 func setup(t *testing.T) {

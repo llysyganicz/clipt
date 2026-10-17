@@ -6,10 +6,10 @@ package editor
 import (
 	"strings"
 
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/textarea"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/textarea"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/llysyganicz/clipt/internal/notes"
 	"github.com/llysyganicz/clipt/internal/ui/theme"
@@ -77,10 +77,20 @@ func load(store notes.Store, note notes.Note, template bool) (Model, error) {
 	ta.CharLimit = 0
 	ta.MaxHeight = 0
 	ta.MaxWidth = 0
-	ta.KeyMap = textarea.DefaultKeyMap
+	ta.KeyMap = textarea.DefaultKeyMap()
 	// ctrl+t means templates everywhere; never let the text area transpose.
 	ta.KeyMap.TransposeCharacterBackward = key.NewBinding(key.WithDisabled())
-	ta.FocusedStyle, ta.BlurredStyle = theme.EditorStyles()
+	// The editor is insert-only: no text selection or clipboard copy.
+	off := key.NewBinding(key.WithDisabled())
+	ta.KeyMap.SelectCharacterForward = off
+	ta.KeyMap.SelectCharacterBackward = off
+	ta.KeyMap.SelectWordForward = off
+	ta.KeyMap.SelectWordBackward = off
+	ta.KeyMap.SelectLineUp = off
+	ta.KeyMap.SelectLineDown = off
+	ta.KeyMap.SelectAll = off
+	ta.KeyMap.CopySelection = off
+	ta.SetStyles(theme.EditorStyles())
 	ta.Focus()
 	ta.SetValue(content)
 
@@ -115,46 +125,49 @@ func (m *Model) scrollToCursor() {
 
 // reflow handles a terminal resize. The text area keeps its scroll offset
 // across size changes, which leaves the view mostly blank after the terminal
-// grows while scrolled down; reloading the buffer resets the offset, and the
-// cursor is put back where it was before scrolling to it.
+// grows while scrolled down. Reloading the buffer resets the offset to the
+// top; the new size is applied before the cursor is put back where it was,
+// because every cursor move scrolls the view just enough to keep the cursor
+// visible at the current height.
 func (m *Model) reflow(width, height int) {
 	row := m.ta.Line()
 	info := m.ta.LineInfo()
 	col := info.StartColumn + info.ColumnOffset
 	m.ta.SetValue(m.ta.Value())
+	m.resize(width, height)
 	for m.ta.Line() > row {
 		m.ta.CursorUp()
 	}
-	m.ta.SetCursor(col)
-	m.resize(width, height)
+	m.ta.SetCursorColumn(col)
+	m.scrollToCursor()
 }
 
-// Init implements tea.Model.
+// Init returns the command that starts the cursor blinking.
 func (m Model) Init() tea.Cmd { return textarea.Blink }
 
-// Update implements tea.Model.
-func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+// Update handles a message and returns the new model.
+func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.reflow(msg.Width, msg.Height)
 		return m, nil
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		m.err = ""
-		switch msg.Type {
-		case tea.KeyCtrlC:
+		switch msg.String() {
+		case "ctrl+c":
 			return m, tea.Quit
-		case tea.KeyCtrlQ:
+		case "ctrl+q":
 			return m.SaveAndQuit()
-		case tea.KeyEsc:
+		case "esc":
 			return m.done()
-		case tea.KeyCtrlT:
+		case "ctrl+t":
 			if m.template {
 				return m, nil
 			}
 			return m, func() tea.Msg { return InsertTemplateMsg{} }
-		case tea.KeyTab:
+		case "tab":
 			return m.Insert(indent), nil
-		case tea.KeyShiftTab:
+		case "shift+tab":
 			m.dedent()
 			return m, nil
 		}
@@ -197,7 +210,7 @@ func (m *Model) dedent() {
 	for m.ta.Line() > row {
 		m.ta.CursorUp()
 	}
-	m.ta.SetCursor(max(0, col-n))
+	m.ta.SetCursorColumn(max(0, col-n))
 	m.scrollToCursor()
 }
 
@@ -219,7 +232,7 @@ func (m *Model) save() bool {
 
 // done saves and emits DoneMsg; on a write failure the editor stays open
 // with the error.
-func (m Model) done() (tea.Model, tea.Cmd) {
+func (m Model) done() (Model, tea.Cmd) {
 	if !m.save() {
 		return m, nil
 	}
@@ -229,7 +242,7 @@ func (m Model) done() (tea.Model, tea.Cmd) {
 // SaveAndQuit saves and quits clipt; on a write failure the editor stays
 // open with the error and clipt keeps running. The root model calls it when
 // the user quits from the template insert mode over this editor.
-func (m Model) SaveAndQuit() (tea.Model, tea.Cmd) {
+func (m Model) SaveAndQuit() (Model, tea.Cmd) {
 	if !m.save() {
 		return m, nil
 	}
@@ -256,13 +269,13 @@ func (m Model) statusBar() string {
 	return left + lipgloss.PlaceHorizontal(m.width-lipgloss.Width(left), lipgloss.Right, theme.Prompt.Render(string(name)))
 }
 
-// View implements tea.Model.
+// View renders the editor.
 func (m Model) View() string {
 	labels := m.gutterLabels()
 	blank := strings.Repeat(" ", m.gutterW)
-	m.ta.SetPromptFunc(m.gutterW, func(row int) string {
-		if row < len(labels) {
-			return labels[row]
+	m.ta.SetPromptFunc(m.gutterW, func(info textarea.PromptInfo) string {
+		if info.LineNumber < len(labels) {
+			return labels[info.LineNumber]
 		}
 		return blank
 	})

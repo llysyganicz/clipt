@@ -8,10 +8,11 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/llysyganicz/clipt/internal/notes"
+	"github.com/llysyganicz/clipt/internal/ui/uitest"
 )
 
 var oldTime = time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)
@@ -45,8 +46,8 @@ func open(t *testing.T, s notes.Store, name string) Model {
 // send delivers msg and returns the message its command produces, if it
 // answers at once. Batches (cursor blink) and sleeping commands yield nil.
 func send(m Model, msg tea.Msg) (Model, tea.Msg) {
-	nm, cmd := m.Update(msg)
-	m = nm.(Model)
+	var cmd tea.Cmd
+	m, cmd = m.Update(msg)
 	if cmd == nil {
 		return m, nil
 	}
@@ -65,12 +66,15 @@ func send(m Model, msg tea.Msg) (Model, tea.Msg) {
 
 func runes(m Model, s string) Model {
 	for _, r := range s {
-		m, _ = send(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m, _ = send(m, uitest.Key(string(r)))
 	}
 	return m
 }
 
-func press(m Model, k tea.KeyType) (Model, tea.Msg) { return send(m, tea.KeyMsg{Type: k}) }
+func press(m Model, k string) (Model, tea.Msg) { return send(m, uitest.Key(k)) }
+
+// view renders m without escape codes so tests can read columns and prefixes.
+func view(m Model) string { return uitest.Strip(m.View()) }
 
 func resize(m Model, w, h int) Model {
 	m, _ = send(m, tea.WindowSizeMsg{Width: w, Height: h})
@@ -110,7 +114,7 @@ func TestCRLFShowsTwoLines(t *testing.T) {
 	if got := m.ta.Value(); got != "a\nb" {
 		t.Errorf("value = %q, want %q", got, "a\nb")
 	}
-	lines := strings.Split(m.View(), "\n")
+	lines := strings.Split(view(m), "\n")
 	if !strings.Contains(lines[0], "a") || !strings.Contains(lines[1], "b") {
 		t.Errorf("lines 1-2 = %q, %q", lines[0], lines[1])
 	}
@@ -118,7 +122,7 @@ func TestCRLFShowsTwoLines(t *testing.T) {
 		t.Errorf("b on the first line: %q", lines[0])
 	}
 	// Still unchanged: the CRLF file is not rewritten without an edit.
-	if _, out := press(m, tea.KeyEsc); out != (DoneMsg{}) {
+	if _, out := press(m, "esc"); out != (DoneMsg{}) {
 		t.Errorf("esc -> %v", out)
 	}
 	if b, old := file(t, s, "todo"); b != "a\r\nb\r\n" || !old {
@@ -130,7 +134,7 @@ func TestTypeThenEscWrites(t *testing.T) {
 	s := setup(t, map[string]string{"todo": "hello"})
 	m := open(t, s, "todo")
 	m = runes(m, " world")
-	m, out := press(m, tea.KeyEsc)
+	m, out := press(m, "esc")
 	if out != (DoneMsg{}) {
 		t.Fatalf("esc -> %v", out)
 	}
@@ -145,9 +149,9 @@ func TestTypeThenEscWrites(t *testing.T) {
 func TestEscWithoutEditsDoesNotWrite(t *testing.T) {
 	s := setup(t, map[string]string{"todo": "a\nb\n"})
 	m := open(t, s, "todo")
-	m, _ = press(m, tea.KeyUp)
-	m, _ = press(m, tea.KeyDown)
-	if _, out := press(m, tea.KeyEsc); out != (DoneMsg{}) {
+	m, _ = press(m, "up")
+	m, _ = press(m, "down")
+	if _, out := press(m, "esc"); out != (DoneMsg{}) {
 		t.Errorf("esc -> %v", out)
 	}
 	if b, old := file(t, s, "todo"); b != "a\nb\n" || !old {
@@ -158,8 +162,8 @@ func TestEscWithoutEditsDoesNotWrite(t *testing.T) {
 func TestTypeThenDeleteDoesNotWrite(t *testing.T) {
 	s := setup(t, map[string]string{"todo": "a\n"})
 	m := runes(open(t, s, "todo"), "x")
-	m, _ = press(m, tea.KeyBackspace)
-	if _, out := press(m, tea.KeyEsc); out != (DoneMsg{}) {
+	m, _ = press(m, "backspace")
+	if _, out := press(m, "esc"); out != (DoneMsg{}) {
 		t.Errorf("esc -> %v", out)
 	}
 	if b, old := file(t, s, "todo"); b != "a\n" || !old {
@@ -170,7 +174,7 @@ func TestTypeThenDeleteDoesNotWrite(t *testing.T) {
 func TestMissingTrailingNewlineNotRewritten(t *testing.T) {
 	s := setup(t, map[string]string{"todo": "a"})
 	m := open(t, s, "todo")
-	if _, out := press(m, tea.KeyEsc); out != (DoneMsg{}) {
+	if _, out := press(m, "esc"); out != (DoneMsg{}) {
 		t.Errorf("esc -> %v", out)
 	}
 	if b, old := file(t, s, "todo"); b != "a" || !old {
@@ -181,14 +185,14 @@ func TestMissingTrailingNewlineNotRewritten(t *testing.T) {
 func TestTabs(t *testing.T) {
 	s := setup(t, map[string]string{"todo": "\tcode\nplain\n"})
 	m := open(t, s, "todo")
-	if _, out := press(m, tea.KeyEsc); out != (DoneMsg{}) {
+	if _, out := press(m, "esc"); out != (DoneMsg{}) {
 		t.Errorf("esc -> %v", out)
 	}
 	if b, old := file(t, s, "todo"); b != "\tcode\nplain\n" || !old {
 		t.Errorf("file touched without edit: %q old=%v", b, old)
 	}
 	m = runes(m, "!") // cursor is at the end of "plain"
-	if _, out := press(m, tea.KeyEsc); out != (DoneMsg{}) {
+	if _, out := press(m, "esc"); out != (DoneMsg{}) {
 		t.Errorf("esc -> %v", out)
 	}
 	if b, _ := file(t, s, "todo"); b != "    code\nplain!\n" {
@@ -200,9 +204,9 @@ func TestTrailingBlankLinesCollapse(t *testing.T) {
 	s := setup(t, map[string]string{"todo": "x\n"})
 	m := runes(open(t, s, "todo"), "done")
 	for i := 0; i < 3; i++ {
-		m, _ = press(m, tea.KeyEnter)
+		m, _ = press(m, "enter")
 	}
-	if _, out := press(m, tea.KeyEsc); out != (DoneMsg{}) {
+	if _, out := press(m, "esc"); out != (DoneMsg{}) {
 		t.Errorf("esc -> %v", out)
 	}
 	if b, _ := file(t, s, "todo"); b != "xdone\n" {
@@ -225,12 +229,12 @@ func TestWriteFailureKeepsContentAndRetries(t *testing.T) {
 	}
 	t.Cleanup(func() { os.Chmod(s.Dir, 0o755); os.Chmod(p, 0o644) })
 
-	m, out := press(m, tea.KeyEsc)
+	m, out := press(m, "esc")
 	if out != nil {
 		t.Fatalf("esc on failure -> %v", out)
 	}
-	if m.err == "" || !strings.Contains(m.View(), "permission denied") {
-		t.Errorf("error not shown: err=%q\n%s", m.err, m.View())
+	if m.err == "" || !strings.Contains(view(m), "permission denied") {
+		t.Errorf("error not shown: err=%q\n%s", m.err, view(m))
 	}
 	if got := m.ta.Value(); got != "ab" {
 		t.Errorf("content lost: %q", got)
@@ -241,7 +245,7 @@ func TestWriteFailureKeepsContentAndRetries(t *testing.T) {
 
 	// The error disappears on the next key press.
 	m = runes(m, "c")
-	if m.err != "" || strings.Contains(m.View(), "permission denied") {
+	if m.err != "" || strings.Contains(view(m), "permission denied") {
 		t.Error("error not cleared by a key press")
 	}
 
@@ -251,7 +255,7 @@ func TestWriteFailureKeepsContentAndRetries(t *testing.T) {
 	if err := os.Chmod(p, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	m, out = press(m, tea.KeyEsc)
+	m, out = press(m, "esc")
 	if out != (DoneMsg{}) || m.err != "" {
 		t.Fatalf("retry -> %v err=%q", out, m.err)
 	}
@@ -267,7 +271,7 @@ func TestRemovedFileIsRecreated(t *testing.T) {
 		t.Fatal(err)
 	}
 	m = runes(m, "b")
-	if _, out := press(m, tea.KeyEsc); out != (DoneMsg{}) {
+	if _, out := press(m, "esc"); out != (DoneMsg{}) {
 		t.Errorf("esc -> %v", out)
 	}
 	if b, _ := file(t, s, "todo"); b != "ab\n" {
@@ -278,7 +282,7 @@ func TestRemovedFileIsRecreated(t *testing.T) {
 func TestCtrlCQuitsWithoutWriting(t *testing.T) {
 	s := setup(t, map[string]string{"todo": "a\n"})
 	m := runes(open(t, s, "todo"), "zzz")
-	if _, out := press(m, tea.KeyCtrlC); out != tea.Msg(tea.QuitMsg{}) {
+	if _, out := press(m, "ctrl+c"); out != tea.Msg(tea.QuitMsg{}) {
 		t.Errorf("ctrl+c -> %v", out)
 	}
 	if b, old := file(t, s, "todo"); b != "a\n" || !old {
@@ -289,23 +293,23 @@ func TestCtrlCQuitsWithoutWriting(t *testing.T) {
 func TestEditingKeys(t *testing.T) {
 	s := setup(t, map[string]string{"todo": "one\ntwo\nthree"})
 	m := open(t, s, "todo")
-	m, _ = press(m, tea.KeyEnter)
+	m, _ = press(m, "enter")
 	m = runes(m, "four")
 	if got := m.ta.Value(); got != "one\ntwo\nthree\nfour" {
 		t.Errorf("after enter: %q", got)
 	}
 	before := m.ta.Value()
-	m, _ = press(m, tea.KeyUp)
+	m, _ = press(m, "up")
 	if m.ta.Line() != 2 || m.ta.Value() != before {
 		t.Errorf("up: line=%d value=%q", m.ta.Line(), m.ta.Value())
 	}
-	m, _ = press(m, tea.KeyHome)
-	m, _ = press(m, tea.KeyDelete)
+	m, _ = press(m, "home")
+	m, _ = press(m, "delete")
 	if got := m.ta.Value(); got != "one\ntwo\nhree\nfour" {
 		t.Errorf("delete: %q", got)
 	}
-	m, _ = press(m, tea.KeyEnd)
-	m, _ = press(m, tea.KeyBackspace)
+	m, _ = press(m, "end")
+	m, _ = press(m, "backspace")
 	if got := m.ta.Value(); got != "one\ntwo\nhre\nfour" {
 		t.Errorf("backspace: %q", got)
 	}
@@ -314,11 +318,11 @@ func TestEditingKeys(t *testing.T) {
 func TestNewNoteStartsOnLineOne(t *testing.T) {
 	s := setup(t, map[string]string{"ideas": ""})
 	m := open(t, s, "ideas")
-	if got := strings.Split(m.View(), "\n")[0]; !strings.Contains(got, "1") {
+	if got := strings.Split(view(m), "\n")[0]; !strings.Contains(got, "1") {
 		t.Errorf("first line lacks line number 1: %q", got)
 	}
 	m = runes(m, "x")
-	if _, out := press(m, tea.KeyEsc); out != (DoneMsg{}) {
+	if _, out := press(m, "esc"); out != (DoneMsg{}) {
 		t.Error("esc")
 	}
 	if b, _ := file(t, s, "ideas"); b != "x\n" {
@@ -329,15 +333,15 @@ func TestNewNoteStartsOnLineOne(t *testing.T) {
 func TestViewStatusBarAndError(t *testing.T) {
 	s := setup(t, map[string]string{"a-rather-long-note-name": "x"})
 	m := resize(open(t, s, "a-rather-long-note-name"), 120, 6)
-	last := lastLine(m.View())
+	last := lastLine(view(m))
 	if !strings.Contains(last, "a-rather-long-note-name") || !strings.Contains(last, "esc save & back") {
 		t.Errorf("wide bar = %q", last)
 	}
-	if got := strings.Count(m.View(), "\n") + 1; got != 6 {
+	if got := strings.Count(view(m), "\n") + 1; got != 6 {
 		t.Errorf("view height = %d, want 6", got)
 	}
 	m = resize(m, 64, 6)
-	last = lastLine(m.View())
+	last = lastLine(view(m))
 	if !strings.Contains(last, "esc save & back") || strings.Contains(last, "a-rather-long-note-name") || !strings.Contains(last, "…") {
 		t.Errorf("narrow bar = %q", last)
 	}
@@ -346,7 +350,7 @@ func TestViewStatusBarAndError(t *testing.T) {
 	}
 
 	m.err = "boom"
-	lines := strings.Split(m.View(), "\n")
+	lines := strings.Split(view(m), "\n")
 	if got := lines[len(lines)-2]; !strings.Contains(got, "boom") {
 		t.Errorf("error line = %q", got)
 	}
@@ -362,18 +366,18 @@ func TestLongNoteShowsLastLineOnEntry(t *testing.T) {
 	}
 	s := setup(t, map[string]string{"long": b.String()})
 	m := open(t, s, "long") // 80x24 default
-	if v := m.View(); !strings.Contains(v, "line100") || strings.Contains(v, "line1 ") {
+	if v := view(m); !strings.Contains(v, "line100") || strings.Contains(v, "line1 ") {
 		t.Errorf("view not scrolled to the end:\n%s", v)
 	}
 	m = resize(m, 80, 200)
-	if v := m.View(); !strings.Contains(v, "line1 ") || !strings.Contains(v, "line100") {
+	if v := view(m); !strings.Contains(v, "line1 ") || !strings.Contains(v, "line100") {
 		t.Errorf("tall view lacks first or last line:\n%s", v)
 	}
-	if got := strings.Count(m.View(), "\n") + 1; got != 200 {
+	if got := strings.Count(view(m), "\n") + 1; got != 200 {
 		t.Errorf("view height = %d, want 200", got)
 	}
 	m = resize(m, 80, 10)
-	if v := m.View(); !strings.Contains(v, "line100") || strings.Contains(v, "line90 ") {
+	if v := view(m); !strings.Contains(v, "line100") || strings.Contains(v, "line90 ") {
 		t.Errorf("short view not scrolled to the cursor:\n%s", v)
 	}
 }
@@ -386,9 +390,9 @@ func TestResizeKeepsCursorAndFillsView(t *testing.T) {
 	s := setup(t, map[string]string{"long": b.String()})
 	m := resize(open(t, s, "long"), 80, 24) // scrolled to the end
 	for i := 0; i < 50; i++ {
-		m, _ = press(m, tea.KeyUp)
+		m, _ = press(m, "up")
 	}
-	m, _ = press(m, tea.KeyLeft) // line 50, before its last character
+	m, _ = press(m, "left") // line 50, before its last character
 	m = resize(m, 80, 60)
 	if m.ta.Line() != 49 {
 		t.Errorf("cursor line after resize = %d, want 49", m.ta.Line())
@@ -397,7 +401,7 @@ func TestResizeKeepsCursorAndFillsView(t *testing.T) {
 	if got := strings.Split(m.ta.Value(), "\n")[49]; got != "line5X0" {
 		t.Errorf("line 50 after typing = %q", got)
 	}
-	lines := strings.Split(m.View(), "\n")
+	lines := strings.Split(view(m), "\n")
 	if len(lines) != 60 {
 		t.Fatalf("view height = %d, want 60", len(lines))
 	}
@@ -406,7 +410,7 @@ func TestResizeKeepsCursorAndFillsView(t *testing.T) {
 			t.Errorf("row %d is blank after growing the terminal", i+1)
 		}
 	}
-	if !strings.Contains(m.View(), "line5X0") {
+	if !strings.Contains(view(m), "line5X0") {
 		t.Error("cursor line not visible after resize")
 	}
 }
@@ -417,12 +421,12 @@ func TestManyLines(t *testing.T) {
 		fmt.Fprintf(&b, "l%d\n", i)
 	}
 	s := setup(t, map[string]string{"big": b.String()})
-	m, _ := press(open(t, s, "big"), tea.KeyEnter)
+	m, _ := press(open(t, s, "big"), "enter")
 	m = runes(m, "l5001")
 	if n := m.ta.LineCount(); n != 5001 {
 		t.Errorf("lines = %d, want 5001", n)
 	}
-	if _, out := press(m, tea.KeyEsc); out != (DoneMsg{}) {
+	if _, out := press(m, "esc"); out != (DoneMsg{}) {
 		t.Error("esc")
 	}
 	if got, _ := file(t, s, "big"); !strings.HasSuffix(got, "l5000\nl5001\n") {
@@ -466,9 +470,9 @@ func TestNewTemplateReadsAndSaves(t *testing.T) {
 	if got := m.ta.Value(); got != "# {{title}}" {
 		t.Errorf("value = %q", got)
 	}
-	m, _ = press(m, tea.KeyEnter)
+	m, _ = press(m, "enter")
 	m = runes(m, "- item")
-	m, out := press(m, tea.KeyEsc)
+	m, out := press(m, "esc")
 	if out != (DoneMsg{Template: true}) {
 		t.Fatalf("esc -> %#v", out)
 	}
@@ -486,11 +490,11 @@ func TestNewTemplateReadsAndSaves(t *testing.T) {
 
 func TestDoneMsgTemplateFlag(t *testing.T) {
 	s := setup(t, map[string]string{"todo": "a\n"})
-	if _, out := press(open(t, s, "todo"), tea.KeyEsc); out != (DoneMsg{Template: false}) {
+	if _, out := press(open(t, s, "todo"), "esc"); out != (DoneMsg{Template: false}) {
 		t.Errorf("note esc -> %#v", out)
 	}
 	ts := setupTemplate(t, map[string]string{"meeting": "a\n"})
-	if _, out := press(openTemplate(t, ts, "meeting"), tea.KeyEsc); out != (DoneMsg{Template: true}) {
+	if _, out := press(openTemplate(t, ts, "meeting"), "esc"); out != (DoneMsg{Template: true}) {
 		t.Errorf("template esc -> %#v", out)
 	}
 }
@@ -498,7 +502,7 @@ func TestDoneMsgTemplateFlag(t *testing.T) {
 func TestCtrlTDoesNotTranspose(t *testing.T) {
 	s := setup(t, map[string]string{"todo": "ab"})
 	m := open(t, s, "todo") // cursor at the end, after "ab"
-	m, out := press(m, tea.KeyCtrlT)
+	m, out := press(m, "ctrl+t")
 	if out != (InsertTemplateMsg{}) {
 		t.Errorf("ctrl+t on a note -> %#v", out)
 	}
@@ -506,7 +510,7 @@ func TestCtrlTDoesNotTranspose(t *testing.T) {
 		t.Errorf("value after ctrl+t = %q, want ab", got)
 	}
 	ts := setupTemplate(t, map[string]string{"meeting": "ab"})
-	tm, out := press(openTemplate(t, ts, "meeting"), tea.KeyCtrlT)
+	tm, out := press(openTemplate(t, ts, "meeting"), "ctrl+t")
 	if out != nil {
 		t.Errorf("ctrl+t on a template -> %#v", out)
 	}
@@ -518,7 +522,7 @@ func TestCtrlTDoesNotTranspose(t *testing.T) {
 func TestInsertAtCursor(t *testing.T) {
 	s := setup(t, map[string]string{"todo": "ab"})
 	m := open(t, s, "todo")
-	m, _ = press(m, tea.KeyLeft) // between a and b
+	m, _ = press(m, "left") // between a and b
 	m = m.Insert("# Standup\n- ")
 	if got := m.ta.Value(); got != "a# Standup\n- b" {
 		t.Errorf("value = %q", got)
@@ -534,8 +538,8 @@ func TestInsertAtCursor(t *testing.T) {
 	if got := m.ta.Value(); got != "a# Standup\n- Xb" {
 		t.Errorf("after typing = %q", got)
 	}
-	m, _ = press(m, tea.KeyBackspace)
-	m, out := press(m, tea.KeyEsc)
+	m, _ = press(m, "backspace")
+	m, out := press(m, "esc")
 	if out != (DoneMsg{}) {
 		t.Fatalf("esc -> %#v", out)
 	}
@@ -552,14 +556,14 @@ func TestInsertScrollsToCursor(t *testing.T) {
 		fmt.Fprintf(&b, "\nline%d", i)
 	}
 	m = m.Insert(b.String())
-	if v := m.View(); !strings.Contains(v, "line20") || strings.Contains(v, "top") {
+	if v := view(m); !strings.Contains(v, "line20") || strings.Contains(v, "top") {
 		t.Errorf("view not scrolled to the inserted end:\n%s", v)
 	}
 }
 
 func TestStatusBarKinds(t *testing.T) {
 	s := setup(t, map[string]string{"todo": "x"})
-	last := lastLine(resize(open(t, s, "todo"), 80, 6).View())
+	last := lastLine(view(resize(open(t, s, "todo"), 80, 6)))
 	if !strings.Contains(last, "ctrl+t template") || !strings.Contains(last, "esc save & back") || !strings.Contains(last, "ctrl+q save & quit") || !strings.Contains(last, "todo") {
 		t.Errorf("note bar = %q", last)
 	}
@@ -567,7 +571,7 @@ func TestStatusBarKinds(t *testing.T) {
 		t.Errorf("note bar marks a template: %q", last)
 	}
 	ts := setupTemplate(t, map[string]string{"meeting": "x"})
-	last = lastLine(resize(openTemplate(t, ts, "meeting"), 80, 6).View())
+	last = lastLine(view(resize(openTemplate(t, ts, "meeting"), 80, 6)))
 	if strings.Contains(last, "ctrl+t") || !strings.Contains(last, "esc save & back") || !strings.Contains(last, "ctrl+q save & quit") || !strings.Contains(last, "template: meeting") {
 		t.Errorf("template bar = %q", last)
 	}

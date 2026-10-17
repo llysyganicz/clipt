@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/llysyganicz/clipt/internal/config"
 	"github.com/llysyganicz/clipt/internal/ui/theme"
@@ -55,7 +55,7 @@ type Model struct {
 func New(origin Origin, prefill, errMsg string) Model {
 	ti := textinput.New()
 	ti.Prompt = "Notes directory: "
-	ti.PromptStyle = theme.Prompt
+	ti.SetStyles(theme.InputStyles())
 	ti.SetValue(prefill)
 	ti.CursorEnd()
 	ti.Focus()
@@ -65,7 +65,7 @@ func New(origin Origin, prefill, errMsg string) Model {
 // Origin returns the entry point that opened the picker.
 func (m Model) Origin() Origin { return m.origin }
 
-// Init implements tea.Model.
+// Init returns the command that starts the cursor blinking.
 func (m Model) Init() tea.Cmd { return textinput.Blink }
 
 // expandPath trims, expands a leading ~ using home, and makes the path absolute.
@@ -82,25 +82,26 @@ func expandPath(in, home string) (string, error) {
 	return filepath.Abs(p)
 }
 
-// Update implements tea.Model.
-func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	key, ok := msg.(tea.KeyMsg)
+// Update handles a message and returns the new model.
+func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
+	key, ok := msg.(tea.KeyPressMsg)
 	if !ok {
 		var cmd tea.Cmd
 		m.input, cmd = m.input.Update(msg)
 		return m, cmd
 	}
 	m.err = ""
-	if key.Type == tea.KeyCtrlC || key.Type == tea.KeyCtrlQ {
+	switch key.String() {
+	case "ctrl+c", "ctrl+q":
 		return m, tea.Quit
 	}
 	if m.state == stateConfirm {
 		return m.updateConfirm(key)
 	}
-	switch key.Type {
-	case tea.KeyEsc:
+	switch key.String() {
+	case "esc":
 		return m, func() tea.Msg { return PickerCancelledMsg{} }
-	case tea.KeyEnter:
+	case "enter":
 		return m.submit()
 	}
 	var cmd tea.Cmd
@@ -108,7 +109,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m Model) submit() (tea.Model, tea.Cmd) {
+func (m Model) submit() (Model, tea.Cmd) {
 	home, _ := os.UserHomeDir()
 	dir, err := expandPath(m.input.Value(), home)
 	if err != nil {
@@ -130,11 +131,11 @@ func (m Model) submit() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) updateConfirm(key tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch {
-	case key.Type == tea.KeyEsc, key.String() == "n", key.String() == "N":
+func (m Model) updateConfirm(key tea.KeyPressMsg) (Model, tea.Cmd) {
+	switch key.String() {
+	case "esc", "n", "N":
 		m.state = stateInput
-	case key.String() == "y", key.String() == "Y":
+	case "y", "Y":
 		m.state = stateInput
 		if err := os.MkdirAll(m.pending, 0o755); err != nil {
 			m.err = err.Error()
@@ -146,7 +147,7 @@ func (m Model) updateConfirm(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 // accept saves the config; on failure the picker stays open with the error.
-func (m Model) accept(dir string) (tea.Model, tea.Cmd) {
+func (m Model) accept(dir string) (Model, tea.Cmd) {
 	if err := config.Save(dir); err != nil {
 		m.state = stateInput
 		m.err = err.Error()
@@ -155,7 +156,7 @@ func (m Model) accept(dir string) (tea.Model, tea.Cmd) {
 	return m, func() tea.Msg { return DirAcceptedMsg{Dir: dir} }
 }
 
-// View implements tea.Model.
+// View renders the picker.
 func (m Model) View() string {
 	var b strings.Builder
 	if m.state == stateConfirm {

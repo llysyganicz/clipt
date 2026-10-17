@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/llysyganicz/clipt/internal/notes"
 	"github.com/llysyganicz/clipt/internal/templates"
@@ -86,22 +86,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		nf, _ := m.finder.Update(msg)
-		m.finder = nf.(finder.Model)
+		m.finder, _ = m.finder.Update(msg)
 		switch m.mode {
 		case modePreview:
-			npv, _ := m.preview.Update(msg)
-			m.preview = npv.(preview.Model)
+			m.preview, _ = m.preview.Update(msg)
 		case modeEdit:
-			ned, _ := m.edit.Update(msg)
-			m.edit = ned.(editor.Model)
+			m.edit, _ = m.edit.Update(msg)
 		case modeTemplate:
 			// The editor is kept behind the insert mode and must be the
 			// right size when it reappears.
-			ned, _ := m.edit.Update(msg)
-			m.edit = ned.(editor.Model)
-			nt, _ := m.tmpl.Update(msg)
-			m.tmpl = nt.(tmpl.Model)
+			m.edit, _ = m.edit.Update(msg)
+			m.tmpl, _ = m.tmpl.Update(msg)
 		}
 		return m, nil
 
@@ -169,8 +164,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case editor.InsertTemplateMsg:
 		m.tmpl = tmpl.New(m.templatesStore())
 		if m.width > 0 && m.height > 0 {
-			nt, _ := m.tmpl.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
-			m.tmpl = nt.(tmpl.Model)
+			m.tmpl, _ = m.tmpl.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 		}
 		m.mode = modeTemplate
 		return m, m.tmpl.Init()
@@ -186,33 +180,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Abandon the insertion; the note's own edits are saved by the
 		// editor, which stays open with the error when that fails.
 		m.mode = modeEdit
-		ned, cmd := m.edit.SaveAndQuit()
-		m.edit = ned.(editor.Model)
+		var cmd tea.Cmd
+		m.edit, cmd = m.edit.SaveAndQuit()
 		return m, cmd
 	}
 
 	var cmd tea.Cmd
 	switch m.mode {
 	case modePicker:
-		var nm tea.Model
-		nm, cmd = m.picker.Update(msg)
-		m.picker = nm.(picker.Model)
+		m.picker, cmd = m.picker.Update(msg)
 	case modeFinder:
-		var nm tea.Model
-		nm, cmd = m.finder.Update(msg)
-		m.finder = nm.(finder.Model)
+		m.finder, cmd = m.finder.Update(msg)
 	case modePreview:
-		var nm tea.Model
-		nm, cmd = m.preview.Update(msg)
-		m.preview = nm.(preview.Model)
+		m.preview, cmd = m.preview.Update(msg)
 	case modeEdit:
-		var nm tea.Model
-		nm, cmd = m.edit.Update(msg)
-		m.edit = nm.(editor.Model)
+		m.edit, cmd = m.edit.Update(msg)
 	case modeTemplate:
-		var nm tea.Model
-		nm, cmd = m.tmpl.Update(msg)
-		m.tmpl = nm.(tmpl.Model)
+		m.tmpl, cmd = m.tmpl.Update(msg)
 	}
 	return m, cmd
 }
@@ -227,8 +211,7 @@ func (m Model) newTemplatesFinder() finder.Model {
 
 func (m Model) sized(f finder.Model) finder.Model {
 	if m.height > 0 {
-		nf, _ := f.Update(tea.WindowSizeMsg{Height: m.height})
-		f = nf.(finder.Model)
+		f, _ = f.Update(tea.WindowSizeMsg{Height: m.height})
 	}
 	return f
 }
@@ -258,8 +241,7 @@ func (m Model) showPreview(n notes.Note) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if m.width > 0 && m.height > 0 {
-		npv, _ := pv.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
-		pv = npv.(preview.Model)
+		pv, _ = pv.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 	}
 	m.current = &n
 	m.preview = pv
@@ -278,8 +260,7 @@ func (m Model) openEdit(n notes.Note) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if m.width > 0 && m.height > 0 {
-		ned, _ := ed.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
-		ed = ned.(editor.Model)
+		ed, _ = ed.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 	}
 	m.current = &n
 	m.edit = ed
@@ -298,8 +279,7 @@ func (m Model) openTemplate(n notes.Note) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if m.width > 0 && m.height > 0 {
-		ned, _ := ed.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
-		ed = ned.(editor.Model)
+		ed, _ = ed.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 	}
 	m.edit = ed
 	m.mode = modeEdit
@@ -329,8 +309,15 @@ func (m Model) dirAccepted(dir string) (tea.Model, tea.Cmd) {
 	return m, m.finder.Init()
 }
 
-// View implements tea.Model.
-func (m Model) View() string {
+// View implements tea.Model: the active mode's rendering, in the alternate
+// screen.
+func (m Model) View() tea.View {
+	v := tea.NewView(m.content())
+	v.AltScreen = true
+	return v
+}
+
+func (m Model) content() string {
 	switch m.mode {
 	case modePicker:
 		return m.picker.View()

@@ -5,12 +5,12 @@ package preview
 import (
 	"strings"
 
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/textinput"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/glamour"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/textinput"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/glamour/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/llysyganicz/clipt/internal/notes"
 	"github.com/llysyganicz/clipt/internal/ui/theme"
@@ -62,7 +62,7 @@ func New(store notes.Store, note notes.Note) (Model, error) {
 	if err != nil {
 		return Model{}, err
 	}
-	vp := viewport.New(defaultWidth, defaultHeight-1)
+	vp := viewport.New(viewport.WithWidth(defaultWidth), viewport.WithHeight(defaultHeight-1))
 	vp.KeyMap = viewport.KeyMap{
 		Up:       key.NewBinding(key.WithKeys("up")),
 		Down:     key.NewBinding(key.WithKeys("down")),
@@ -83,8 +83,8 @@ func New(store notes.Store, note notes.Note) (Model, error) {
 
 // render re-renders the markdown at the current width and scrolls to the top.
 func (m *Model) render() {
-	m.vp.Width = m.width
-	m.vp.Height = max(m.height-1, 0)
+	m.vp.SetWidth(m.width)
+	m.vp.SetHeight(max(m.height-1, 0))
 	out := m.content
 	if r, err := glamour.NewTermRenderer(
 		glamour.WithStyles(theme.Markdown),
@@ -98,19 +98,19 @@ func (m *Model) render() {
 	m.vp.GotoTop()
 }
 
-// Init implements tea.Model.
+// Init returns no command.
 func (m Model) Init() tea.Cmd { return nil }
 
-// Update implements tea.Model.
-func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+// Update handles a message and returns the new model.
+func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		m.render()
 		return m, nil
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		m.err = ""
-		if msg.Type == tea.KeyCtrlC || msg.Type == tea.KeyCtrlQ {
+		if k := msg.String(); k == "ctrl+c" || k == "ctrl+q" {
 			return m, tea.Quit
 		}
 		switch m.state {
@@ -126,24 +126,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m Model) updateView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch {
-	case msg.Type == tea.KeyEsc:
+func (m Model) updateView(msg tea.KeyPressMsg) (Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
 		return m, func() tea.Msg { return BackMsg{} }
-	case msg.String() == "e":
+	case "e":
 		note := m.note
 		return m, func() tea.Msg { return EditMsg{Note: note} }
-	case msg.String() == "r":
+	case "r":
 		ti := textinput.New()
 		ti.Prompt = "Rename: "
-		ti.PromptStyle = theme.Prompt
+		ti.SetStyles(theme.InputStyles())
 		ti.SetValue(m.note.Name)
 		ti.CursorEnd()
 		ti.Focus()
 		m.input = ti
 		m.state = stateRename
 		return m, textinput.Blink
-	case msg.String() == "d":
+	case "d":
 		m.state = stateConfirm
 		return m, nil
 	}
@@ -152,12 +152,12 @@ func (m Model) updateView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m Model) updateRename(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.Type {
-	case tea.KeyEsc:
+func (m Model) updateRename(msg tea.KeyPressMsg) (Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
 		m.state = stateView
 		return m, nil
-	case tea.KeyEnter:
+	case "enter":
 		name := strings.TrimSpace(m.input.Value())
 		if name == m.note.Name {
 			m.state = stateView
@@ -177,11 +177,11 @@ func (m Model) updateRename(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m Model) updateConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch {
-	case msg.Type == tea.KeyEsc, msg.String() == "n", msg.String() == "N":
+func (m Model) updateConfirm(msg tea.KeyPressMsg) (Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc", "n", "N":
 		m.state = stateView
-	case msg.String() == "y", msg.String() == "Y":
+	case "y", "Y":
 		m.state = stateView
 		if err := m.store.Delete(m.note.Name); err != nil {
 			m.err = err.Error()
@@ -212,7 +212,7 @@ func (m Model) statusBar() string {
 	return left + lipgloss.PlaceHorizontal(m.width-lipgloss.Width(left), lipgloss.Right, theme.Prompt.Render(string(name)))
 }
 
-// View implements tea.Model.
+// View renders the preview.
 func (m Model) View() string {
 	body := m.vp.View()
 	if m.err != "" {

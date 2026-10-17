@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/llysyganicz/clipt/internal/notes"
 	"github.com/llysyganicz/clipt/internal/templates"
@@ -83,7 +83,7 @@ func newModel(store notes.Store, scope Scope, current *notes.Note, query string)
 	if scope == ScopeTemplates {
 		ti.Prompt = "templates> "
 	}
-	ti.PromptStyle = theme.Prompt
+	ti.SetStyles(theme.InputStyles())
 	ti.SetValue(query)
 	ti.CursorEnd()
 	ti.Focus()
@@ -127,42 +127,42 @@ func (m Model) Rows() []Row { return m.rows }
 // Selected returns the selected row index.
 func (m Model) Selected() int { return m.sel }
 
-// Init implements tea.Model.
+// Init returns the command that starts the cursor blinking.
 func (m Model) Init() tea.Cmd { return textinput.Blink }
 
-// Update implements tea.Model.
-func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+// Update handles a message and returns the new model.
+func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	if ws, ok := msg.(tea.WindowSizeMsg); ok {
 		m.height = ws.Height
 		return m, nil
 	}
-	key, ok := msg.(tea.KeyMsg)
+	key, ok := msg.(tea.KeyPressMsg)
 	if !ok {
 		var cmd tea.Cmd
 		m.input, cmd = m.input.Update(msg)
 		return m, cmd
 	}
 	m.err = ""
-	switch key.Type {
-	case tea.KeyCtrlC, tea.KeyCtrlQ:
+	switch key.String() {
+	case "ctrl+c", "ctrl+q":
 		return m, tea.Quit
-	case tea.KeyEsc:
+	case "esc":
 		return m, func() tea.Msg { return BackMsg{} }
-	case tea.KeyCtrlO:
+	case "ctrl+o":
 		return m, func() tea.Msg { return ChangeDirMsg{} }
-	case tea.KeyCtrlT:
+	case "ctrl+t":
 		return m, func() tea.Msg { return ToggleScopeMsg{} }
-	case tea.KeyUp, tea.KeyCtrlP:
+	case "up", "ctrl+p":
 		if m.sel > 0 {
 			m.sel--
 		}
 		return m, nil
-	case tea.KeyDown, tea.KeyCtrlN:
+	case "down", "ctrl+n":
 		if m.sel < len(m.rows)-1 {
 			m.sel++
 		}
 		return m, nil
-	case tea.KeyEnter:
+	case "enter":
 		return m.enter()
 	}
 	before := m.input.Value()
@@ -174,7 +174,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m Model) enter() (tea.Model, tea.Cmd) {
+func (m Model) enter() (Model, tea.Cmd) {
 	if len(m.rows) == 0 {
 		return m, nil
 	}
@@ -210,7 +210,7 @@ func (m Model) create(name string) error {
 	return m.store.Write(name, templates.Skeleton)
 }
 
-// View implements tea.Model.
+// View renders the finder.
 func (m Model) View() string {
 	var b strings.Builder
 	b.WriteString(m.input.View())

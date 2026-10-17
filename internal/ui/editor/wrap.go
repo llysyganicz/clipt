@@ -9,10 +9,11 @@ import (
 )
 
 // wrap is a verbatim copy of the text area's unexported soft-wrap function
-// (bubbles v1.0.0, textarea.go). The editor needs to know how many visual
-// rows each logical line takes to draw its own line number gutter, and the
-// text area exposes that only for the cursor's line. Bubbles v2 carries the
-// identical function. wrapRowsMatchTextArea in the tests guards the copy.
+// (charm.land/bubbles/v2 v2.2.1, textarea/textarea.go; byte-identical to
+// the v1.0.0 original). The editor needs to know how many visual rows each
+// logical line takes to draw its own line number gutter, and the text area
+// exposes that only for the cursor's line. wrapRowsMatchTextArea in the
+// tests guards the copy.
 func wrap(runes []rune, width int) [][]rune {
 	var (
 		lines  = [][]rune{{}}

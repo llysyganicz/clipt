@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/charmbracelet/glamour"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/glamour/v2"
+	"charm.land/lipgloss/v2"
 )
 
 func TestStylesRender(t *testing.T) {
@@ -25,17 +25,40 @@ func TestStylesRender(t *testing.T) {
 }
 
 func TestEditorStylesRender(t *testing.T) {
-	focused, blurred := EditorStyles()
-	for name, s := range map[string]lipgloss.Style{
-		"focused.LineNumber": focused.LineNumber, "focused.CursorLineNumber": focused.CursorLineNumber,
-		"focused.Text": focused.Text, "blurred.LineNumber": blurred.LineNumber,
+	s := EditorStyles()
+	for name, st := range map[string]lipgloss.Style{
+		"focused.LineNumber": s.Focused.LineNumber, "focused.CursorLineNumber": s.Focused.CursorLineNumber,
+		"focused.Text": s.Focused.Text, "blurred.LineNumber": s.Blurred.LineNumber,
 	} {
-		if s.Render("x") == "" {
+		if st.Render("x") == "" {
 			t.Errorf("%s rendered an empty string", name)
 		}
 	}
-	if focused.CursorLine.GetBackground() != (lipgloss.NoColor{}) {
+	if s.Focused.CursorLine.GetBackground() != (lipgloss.NoColor{}) {
 		t.Error("cursor line has a background")
+	}
+	if s.Cursor.Color == nil {
+		t.Error("cursor has no color")
+	}
+}
+
+func TestInputStyles(t *testing.T) {
+	s := InputStyles()
+	for name, st := range map[string]lipgloss.Style{
+		"focused.Prompt": s.Focused.Prompt, "blurred.Prompt": s.Blurred.Prompt,
+	} {
+		if st.Render("x") == "" {
+			t.Errorf("%s rendered an empty string", name)
+		}
+	}
+	if s.Blurred.Text.GetForeground() != (lipgloss.NoColor{}) {
+		t.Error("blurred text has a foreground")
+	}
+	if s.Focused.Text.GetForeground() != (lipgloss.NoColor{}) {
+		t.Error("focused text has a foreground")
+	}
+	if s.Cursor.Color == nil {
+		t.Error("cursor has no color")
 	}
 }
 
