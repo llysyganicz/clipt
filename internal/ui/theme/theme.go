@@ -27,4 +27,8 @@ var (
 	Error = lipgloss.NewStyle().Foreground(lipgloss.Color(red))
 	// Prompt styles input prompts and confirmation questions.
 	Prompt = lipgloss.NewStyle().Foreground(lipgloss.Color(yellow))
+	// Tag styles a note's tags in the preview header.
+	Tag = lipgloss.NewStyle().Foreground(lipgloss.Color(aqua))
+	// RowTag styles the dimmed tags after a name on finder and picker rows.
+	RowTag = lipgloss.NewStyle().Foreground(lipgloss.Color(gray)).Faint(true)
 )

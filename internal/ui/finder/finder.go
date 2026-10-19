@@ -11,7 +11,10 @@ import (
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
+	"github.com/llysyganicz/clipt/internal/frontmatter"
 	"github.com/llysyganicz/clipt/internal/notes"
 	"github.com/llysyganicz/clipt/internal/templates"
 	"github.com/llysyganicz/clipt/internal/ui/theme"
@@ -35,7 +38,7 @@ type OpenNoteMsg struct {
 }
 
 // NoteCreatedMsg reports a freshly created note or template, to be opened in
-// edit.
+// edit. Note.Tags holds the tags it was created with.
 type NoteCreatedMsg struct {
 	Note  notes.Note
 	Scope Scope
@@ -60,6 +63,7 @@ type Model struct {
 	rows    []Row
 	input   textinput.Model
 	sel     int
+	width   int
 	height  int
 	err     string
 }
@@ -105,7 +109,7 @@ func (m *Model) reload() {
 }
 
 func (m *Model) rebuild() {
-	m.rows = BuildRows(m.all, m.current, m.input.Value())
+	m.rows = BuildRows(m.all, m.current, ParseQuery(m.input.Value()))
 	m.sel = 0
 }
 
@@ -133,7 +137,7 @@ func (m Model) Init() tea.Cmd { return textinput.Blink }
 // Update handles a message and returns the new model.
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	if ws, ok := msg.(tea.WindowSizeMsg); ok {
-		m.height = ws.Height
+		m.width, m.height = ws.Width, ws.Height
 		return m, nil
 	}
 	key, ok := msg.(tea.KeyPressMsg)
@@ -183,20 +187,24 @@ func (m Model) enter() (Model, tea.Cmd) {
 		n := *row.Note
 		return m, func() tea.Msg { return OpenNoteMsg{Note: n, Scope: m.scope} }
 	}
-	if err := m.create(row.Create); err != nil {
+	if err := m.create(row.Create, row.CreateTags); err != nil {
 		m.err = err.Error()
 		return m, nil
 	}
-	n := notes.Note{Name: row.Create, ModTime: time.Now()}
+	n := notes.Note{Name: row.Create, ModTime: time.Now(), Tags: row.CreateTags}
 	return m, func() tea.Msg { return NoteCreatedMsg{Note: n, Scope: m.scope} }
 }
 
-// create makes the file for the create row: an empty note, or a template
-// holding the skeleton in a templates directory created on demand. The name
-// is validated before anything touches the disk.
-func (m Model) create(name string) error {
+// create makes the file for the create row: a note, empty or holding only
+// front matter with the tags, or a template holding the skeleton with the
+// tags in a templates directory created on demand. The name is validated
+// before anything touches the disk.
+func (m Model) create(name string, tags []string) error {
 	if m.scope == ScopeNotes {
-		return m.store.Create(name)
+		if err := m.store.Create(name); err != nil || len(tags) == 0 {
+			return err
+		}
+		return m.store.Write(name, frontmatter.Fence+"\n"+frontmatter.Line(tags)+"\n"+frontmatter.Fence+"\n")
 	}
 	if err := notes.ValidateName(name); err != nil {
 		return err
@@ -207,7 +215,7 @@ func (m Model) create(name string) error {
 	if err := m.store.Create(name); err != nil {
 		return err
 	}
-	return m.store.Write(name, templates.Skeleton)
+	return m.store.Write(name, templates.SkeletonWithTags(tags))
 }
 
 // View renders the finder.
@@ -220,11 +228,11 @@ func (m Model) View() string {
 	start, end := m.window()
 	for i := start; i < end; i++ {
 		row := m.rows[i]
-		marker, text, style := "  ", "", theme.Normal
+		marker, text, tags, style := "  ", "", []string(nil), theme.Normal
 		if row.IsCreate() {
-			text, style = fmt.Sprintf("Create %q", row.Create), theme.Create
+			text, tags, style = fmt.Sprintf("Create %q", row.Create), row.CreateTags, theme.Create
 		} else {
-			text = row.Note.Name
+			text, tags = row.Note.Name, row.Note.Tags
 		}
 		if i == m.sel {
 			marker = "> "
@@ -232,13 +240,36 @@ func (m Model) View() string {
 				style = theme.Selected
 			}
 		}
-		b.WriteString("\n" + style.Render(marker+text))
+		b.WriteString("\n" + RenderRow(marker+text, style, tags, m.width))
 	}
 	if m.err != "" {
 		b.WriteString("\n" + theme.Error.Render(m.err))
 	}
 	b.WriteString("\n" + theme.Hint.Render(m.footer()))
 	return b.String()
+}
+
+// RenderRow renders a list row: head in style, then the tags dimmed in the
+// tag display form. When width is known and the row does not fit, the tags
+// are cut from the end and marked with "…", or left out when there is no
+// room for them; head is never shortened.
+func RenderRow(head string, style lipgloss.Style, tags []string, width int) string {
+	out := style.Render(head)
+	if len(tags) == 0 {
+		return out
+	}
+	disp := frontmatter.Display(tags)
+	if width > 0 {
+		avail := width - lipgloss.Width(head) - 1
+		switch {
+		case lipgloss.Width(disp) <= avail:
+		case avail >= 2:
+			disp = ansi.Truncate(disp, avail, "…")
+		default:
+			return out
+		}
+	}
+	return out + " " + theme.RowTag.Render(disp)
 }
 
 func (m Model) emptyHint() string {

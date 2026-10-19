@@ -5,7 +5,6 @@
 package templates
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,14 +14,22 @@ import (
 
 	"github.com/goccy/go-yaml"
 
+	"github.com/llysyganicz/clipt/internal/frontmatter"
 	"github.com/llysyganicz/clipt/internal/notes"
 )
 
 // dirName is the subdirectory of the notes directory that holds templates.
 const dirName = ".templates"
 
-// Skeleton is the content of a template freshly created from clipt.
-const Skeleton = "---\nform:\n  - name: title\n    label: Title\n    type: text\n---\n# {{title}}\n"
+// Skeleton is the content of a template freshly created from clipt without
+// tags.
+var Skeleton = SkeletonWithTags(nil)
+
+// SkeletonWithTags is the skeleton with tags in its front matter.
+func SkeletonWithTags(tags []string) string {
+	return "---\n" + frontmatter.Line(frontmatter.Clean(tags)) +
+		"\nform:\n  - name: title\n    label: Title\n    type: text\n---\n# {{title}}\n"
+}
 
 // Dir returns the templates directory for the notes directory.
 func Dir(notesDir string) string { return filepath.Join(notesDir, dirName) }
@@ -63,9 +70,10 @@ func (f Field) Default() string {
 	return ""
 }
 
-// Template is a parsed template: its form fields and markdown body.
+// Template is a parsed template: its form fields, tags and markdown body.
 type Template struct {
 	Fields []Field
+	Tags   []string
 	Body   string
 }
 
@@ -80,37 +88,31 @@ type frontMatter struct {
 	Form []rawField `yaml:"form"`
 }
 
-const fence = "---"
-
-// Parse parses a template file. Windows line endings are normalized first.
-// Front matter is present when the first line is exactly "---" and ends at
-// the next such line; its "form" key lists the fields. The body is the rest
-// with leading blank lines and trailing newlines removed.
+// Parse parses a template file. Front matter follows frontmatter.Split; its
+// "form" key lists the fields and its "tags" key the template's tags, taken
+// literally. The body is the rest with leading blank lines and trailing
+// newlines removed.
 func Parse(content string) (Template, error) {
-	content = strings.ReplaceAll(content, "\r\n", "\n")
-	lines := strings.Split(content, "\n")
-	if lines[0] != fence {
-		return Template{Body: body(lines)}, nil
-	}
-	end := -1
-	for i := 1; i < len(lines); i++ {
-		if lines[i] == fence {
-			end = i
-			break
-		}
-	}
-	if end < 0 {
-		return Template{}, errors.New("front matter is not closed: no closing --- line")
-	}
-	var fm frontMatter
-	if err := yaml.Unmarshal([]byte(strings.Join(lines[1:end], "\n")), &fm); err != nil {
-		return Template{}, fmt.Errorf("front matter: %w", err)
-	}
-	fields, err := validate(fm.Form)
+	fm, rest, err := frontmatter.Split(content)
 	if err != nil {
 		return Template{}, err
 	}
-	return Template{Fields: fields, Body: body(lines[end+1:])}, nil
+	if !fm.Present {
+		return Template{Body: body(strings.Split(rest, "\n"))}, nil
+	}
+	var raw frontMatter
+	if err := yaml.Unmarshal([]byte(fm.YAML()), &raw); err != nil {
+		return Template{}, fmt.Errorf("front matter: %w", err)
+	}
+	tags, err := frontmatter.Tags(fm.YAML())
+	if err != nil {
+		return Template{}, fmt.Errorf("front matter: %w", err)
+	}
+	fields, err := validate(raw.Form)
+	if err != nil {
+		return Template{}, err
+	}
+	return Template{Fields: fields, Tags: tags, Body: body(strings.Split(rest, "\n"))}, nil
 }
 
 // body joins lines, dropping leading whitespace-only lines and trailing

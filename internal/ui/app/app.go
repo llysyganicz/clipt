@@ -109,7 +109,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Scope == finder.ScopeTemplates {
 			return m.openTemplate(msg.Note)
 		}
-		return m.openEdit(msg.Note)
+		out, cmd := m.openEdit(msg.Note)
+		m = out.(Model)
+		if m.mode == modeEdit && len(msg.Note.Tags) > 0 {
+			// The note is only front matter; start on the line after it.
+			// Saving trims the newline back, so an untouched note is kept.
+			m.edit = m.edit.Insert("\n")
+		}
+		return m, cmd
 	case finder.ToggleScopeMsg:
 		if m.finder.Scope() == finder.ScopeTemplates {
 			return m.toFinder()
@@ -170,7 +177,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.tmpl.Init()
 
 	case tmpl.InsertMsg:
-		m.edit = m.edit.Insert(msg.Text)
+		m.edit = m.edit.InsertTemplate(msg.Text, msg.Tags)
 		m.mode = modeEdit
 		return m, nil
 	case tmpl.CancelMsg:
@@ -211,7 +218,7 @@ func (m Model) newTemplatesFinder() finder.Model {
 
 func (m Model) sized(f finder.Model) finder.Model {
 	if m.height > 0 {
-		f, _ = f.Update(tea.WindowSizeMsg{Height: m.height})
+		f, _ = f.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 	}
 	return f
 }

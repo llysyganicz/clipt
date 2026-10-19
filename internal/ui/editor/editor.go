@@ -11,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/llysyganicz/clipt/internal/frontmatter"
 	"github.com/llysyganicz/clipt/internal/notes"
 	"github.com/llysyganicz/clipt/internal/ui/theme"
 )
@@ -184,6 +185,38 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 // and scrolls the view to it.
 func (m Model) Insert(text string) Model {
 	m.ta.InsertString(text)
+	m.syncGutterWidth()
+	m.scrollToCursor()
+	return m
+}
+
+// InsertTemplate inserts a template's body at the cursor as Insert does,
+// then merges the template's tags into the note's front matter. The cursor
+// stays after the inserted body, moved by the lines the merge added or
+// removed above it. When the merge is refused the body stays inserted, the
+// front matter is left as it was and the error is shown.
+func (m Model) InsertTemplate(body string, tags []string) Model {
+	m = m.Insert(body)
+	if len(tags) == 0 {
+		return m
+	}
+	merged, delta, err := frontmatter.MergeTags(m.ta.Value(), tags)
+	if err != nil {
+		msg, _, _ := strings.Cut(err.Error(), "\n")
+		m.err = "tags not merged: " + msg
+		return m
+	}
+	if merged == m.ta.Value() {
+		return m
+	}
+	row := m.ta.Line() + delta
+	info := m.ta.LineInfo()
+	col := info.StartColumn + info.ColumnOffset
+	m.ta.SetValue(merged)
+	for m.ta.Line() > row {
+		m.ta.CursorUp()
+	}
+	m.ta.SetCursorColumn(col)
 	m.syncGutterWidth()
 	m.scrollToCursor()
 	return m

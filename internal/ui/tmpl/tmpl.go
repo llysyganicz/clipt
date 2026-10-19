@@ -20,8 +20,12 @@ import (
 	"github.com/llysyganicz/clipt/internal/ui/theme"
 )
 
-// InsertMsg hands the expanded template body back to the caller.
-type InsertMsg struct{ Text string }
+// InsertMsg hands the expanded template body and the template's tags back
+// to the caller.
+type InsertMsg struct {
+	Text string
+	Tags []string
+}
 
 // CancelMsg reports that the user left the insert mode without a result.
 type CancelMsg struct{}
@@ -102,8 +106,9 @@ func New(store notes.Store) Model {
 
 func (m *Model) filter() {
 	m.rows = m.rows[:0]
+	q := finder.ParseQuery(m.query.Value())
 	for _, n := range m.all {
-		if finder.Match(m.query.Value(), n.Name) {
+		if finder.MatchItem(q, n) {
 			m.rows = append(m.rows, n)
 		}
 	}
@@ -212,7 +217,7 @@ func (m Model) pick() (Model, tea.Cmd) {
 		return m, nil
 	}
 	if len(tpl.Fields) == 0 {
-		return m, func() tea.Msg { return InsertMsg{Text: tpl.Body} }
+		return m, func() tea.Msg { return InsertMsg{Text: tpl.Body, Tags: tpl.Tags} }
 	}
 	m.tpl = tpl
 	m.form = make([]row, len(tpl.Fields))
@@ -291,8 +296,8 @@ func (m Model) submit() (Model, tea.Cmd) {
 			return m.setFocus(i), nil
 		}
 	}
-	text := m.tpl.Expand(m.Values())
-	return m, func() tea.Msg { return InsertMsg{Text: text} }
+	text, tags := m.tpl.Expand(m.Values()), m.tpl.Tags
+	return m, func() tea.Msg { return InsertMsg{Text: text, Tags: tags} }
 }
 
 // View renders the picker or the form.
@@ -328,7 +333,7 @@ func (m Model) pickLines() []string {
 		if i == m.sel {
 			marker, style = "> ", theme.Selected
 		}
-		lines = append(lines, style.Render(marker+m.rows[i].Name))
+		lines = append(lines, finder.RenderRow(marker+m.rows[i].Name, style, m.rows[i].Tags, m.width))
 	}
 	return lines
 }

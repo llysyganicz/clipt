@@ -3,6 +3,7 @@ package preview
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -179,7 +180,7 @@ func TestLeavingKeys(t *testing.T) {
 	if _, out := press(m, "esc"); out != (BackMsg{}) {
 		t.Errorf("esc -> %v", out)
 	}
-	if _, out := send(m, uitest.Key("e")); out != (EditMsg{Note: notes.Note{Name: "n"}}) {
+	if _, out := send(m, uitest.Key("e")); !reflect.DeepEqual(out, EditMsg{Note: notes.Note{Name: "n"}}) {
 		t.Errorf("e -> %v", out)
 	}
 	if _, out := press(m, "ctrl+c"); out != tea.Msg(tea.QuitMsg{}) {

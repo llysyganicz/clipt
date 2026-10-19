@@ -2,6 +2,7 @@
 package notes
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"os"
@@ -9,15 +10,18 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/llysyganicz/clipt/internal/frontmatter"
 )
 
 const ext = ".md"
 
 // Note is a markdown file in the notes directory. Name is the file name
-// without the trailing .md.
+// without the trailing .md; Tags come from its front matter.
 type Note struct {
 	Name    string
 	ModTime time.Time
+	Tags    []string
 }
 
 // FileName returns the note's file name on disk.
@@ -41,7 +45,9 @@ func ValidateName(name string) error {
 	return nil
 }
 
-// List returns the notes sorted by modification time (newest first), then name.
+// List returns the notes sorted by modification time (newest first), then
+// name, each with the tags of its front matter. A note whose front matter
+// cannot be read or is invalid is listed without tags.
 func (s Store) List() ([]Note, error) {
 	entries, err := os.ReadDir(s.Dir)
 	if err != nil {
@@ -57,7 +63,11 @@ func (s Store) List() ([]Note, error) {
 		if err != nil || !info.Mode().IsRegular() {
 			continue
 		}
-		out = append(out, Note{Name: strings.TrimSuffix(fn, ext), ModTime: info.ModTime()})
+		out = append(out, Note{
+			Name:    strings.TrimSuffix(fn, ext),
+			ModTime: info.ModTime(),
+			Tags:    readTags(filepath.Join(s.Dir, fn)),
+		})
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if !out[i].ModTime.Equal(out[j].ModTime) {
@@ -66,6 +76,34 @@ func (s Store) List() ([]Note, error) {
 		return out[i].Name < out[j].Name
 	})
 	return out, nil
+}
+
+// readTags reads only the head of the file at path, up to the closing
+// front matter fence, and returns its tags; nil on any error.
+func readTags(path string) []string {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 4096), 1<<20)
+	var head []string
+	for sc.Scan() {
+		line := strings.TrimSuffix(sc.Text(), "\r")
+		head = append(head, line)
+		if len(head) == 1 && line != frontmatter.Fence {
+			return nil
+		}
+		if len(head) > 1 && line == frontmatter.Fence {
+			tags, err := frontmatter.Parse(strings.Join(head, "\n"))
+			if err != nil {
+				return nil
+			}
+			return tags
+		}
+	}
+	return nil
 }
 
 // Exists reports whether a note with the given name exists as a file.

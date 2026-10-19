@@ -12,6 +12,7 @@ import (
 	"charm.land/glamour/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/llysyganicz/clipt/internal/frontmatter"
 	"github.com/llysyganicz/clipt/internal/notes"
 	"github.com/llysyganicz/clipt/internal/ui/theme"
 )
@@ -47,6 +48,7 @@ type Model struct {
 	store   notes.Store
 	note    notes.Note
 	content string
+	header  string // tags header, or an invalid front matter error; may be empty
 	width   int
 	height  int
 	vp      viewport.Model
@@ -81,16 +83,37 @@ func New(store notes.Store, note notes.Note) (Model, error) {
 	return m, nil
 }
 
-// render re-renders the markdown at the current width and scrolls to the top.
+// render re-renders the tags header and the markdown body at the current
+// width and scrolls to the top. The front matter is never rendered as
+// markdown; when it is not closed the whole file is the body.
 func (m *Model) render() {
+	fm, body, err := frontmatter.Split(m.content)
+	var tags []string
+	if err == nil && fm.Present {
+		tags, err = frontmatter.Tags(fm.YAML())
+	}
+	switch {
+	case err != nil:
+		msg, _, _ := strings.Cut(err.Error(), "\n")
+		m.header = theme.Error.Width(m.width).Render("invalid front matter: " + msg)
+	case len(tags) > 0:
+		m.header = theme.Tag.Width(m.width).Render(frontmatter.Display(tags))
+	default:
+		m.header = ""
+	}
+	headerLines := 0
+	if m.header != "" {
+		headerLines = lipgloss.Height(m.header)
+	}
+
 	m.vp.SetWidth(m.width)
-	m.vp.SetHeight(max(m.height-1, 0))
-	out := m.content
+	m.vp.SetHeight(max(m.height-1-headerLines, 0))
+	out := body
 	if r, err := glamour.NewTermRenderer(
 		glamour.WithStyles(theme.Markdown),
 		glamour.WithWordWrap(m.width),
 	); err == nil {
-		if s, err := r.Render(m.content); err == nil {
+		if s, err := r.Render(body); err == nil {
 			out = s
 		}
 	}
@@ -219,6 +242,9 @@ func (m Model) View() string {
 		lines := strings.Split(body, "\n")
 		lines[len(lines)-1] = theme.Error.Render(m.err)
 		body = strings.Join(lines, "\n")
+	}
+	if m.header != "" {
+		body = m.header + "\n" + body
 	}
 	return body + "\n" + m.statusBar()
 }

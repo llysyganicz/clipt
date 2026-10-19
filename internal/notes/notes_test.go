@@ -251,3 +251,49 @@ func TestDelete(t *testing.T) {
 		t.Errorf("Delete(missing) err = %v", err)
 	}
 }
+
+func TestListTags(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)
+	files := []struct{ name, content string }{
+		{"tagged.md", "---\ntags: [work, meeting]\n---\n# Standup\n"},
+		{"crlf.md", "---\r\ntags:\r\n  - home\r\n---\r\nx\r\n"},
+		{"untagged.md", "# Ideas\n---\ntags: [no]\n---\n"},
+		{"unclosed.md", "---\ntags: [work]\n# Draft\n"},
+		{"invalid.md", "---\ntags: [work\n---\n"},
+		{"string.md", "---\ntags: work\n---\n"},
+		{"empty.md", ""},
+	}
+	for i, f := range files { // later files are older
+		p := filepath.Join(dir, f.name)
+		write(t, dir, f.name, f.content)
+		mt := base.Add(-time.Duration(i) * time.Hour)
+		if err := os.Chtimes(p, mt, mt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	touch(t, dir, ".hidden.md", base)
+	write(t, dir, "other.txt", "---\ntags: [x]\n---\n")
+
+	got, err := Store{Dir: dir}.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Note{
+		{Name: "tagged", Tags: []string{"work", "meeting"}},
+		{Name: "crlf", Tags: []string{"home"}},
+		{Name: "untagged"},
+		{Name: "unclosed"},
+		{Name: "invalid"},
+		{Name: "string"},
+		{Name: "empty"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("List() = %+v", got)
+	}
+	for i := range want {
+		if got[i].Name != want[i].Name || !reflect.DeepEqual(got[i].Tags, want[i].Tags) {
+			t.Errorf("List()[%d] = %q %q, want %q %q", i, got[i].Name, got[i].Tags, want[i].Name, want[i].Tags)
+		}
+	}
+}

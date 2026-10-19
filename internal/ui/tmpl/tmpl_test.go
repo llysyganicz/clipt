@@ -166,7 +166,7 @@ func TestPickerEsc(t *testing.T) {
 func TestPickFieldlessInserts(t *testing.T) {
 	m := New(setup(t, []string{"daily"}, map[string]string{"daily": "# Daily\n\n- [ ] \n"}))
 	m, msg := press(m, "enter")
-	if msg != (InsertMsg{Text: "# Daily\n\n- [ ] "}) {
+	if !reflect.DeepEqual(msg, InsertMsg{Text: "# Daily\n\n- [ ] "}) {
 		t.Errorf("enter -> %#v", msg)
 	}
 	if m.InForm() {
@@ -303,7 +303,7 @@ func TestFormSubmit(t *testing.T) {
 	m, _ = press(m, "enter")            // count -> prio
 	m, _ = press(m, "right")            // high
 	m, msg := press(m, "enter")         // submit
-	if msg != (InsertMsg{Text: "# Standup 0 high"}) {
+	if !reflect.DeepEqual(msg, InsertMsg{Text: "# Standup 0 high"}) {
 		t.Errorf("submit -> %#v", msg)
 	}
 }
@@ -324,7 +324,7 @@ func TestFormInvalidNumber(t *testing.T) {
 	// Fix it and submit from the last row.
 	m, _ = press(m, "backspace", "backspace", "backspace", "7", "tab")
 	m, msg = press(m, "enter")
-	if msg != (InsertMsg{Text: "#  7 low"}) {
+	if !reflect.DeepEqual(msg, InsertMsg{Text: "#  7 low"}) {
 		t.Errorf("resubmit -> %#v", msg)
 	}
 }
@@ -333,7 +333,7 @@ func TestFormDecimalVerbatim(t *testing.T) {
 	m := openForm(t)
 	m, _ = press(m, "tab", "backspace", "1.50", "tab")
 	_, msg := press(m, "enter")
-	if msg != (InsertMsg{Text: "#  1.50 low"}) {
+	if !reflect.DeepEqual(msg, InsertMsg{Text: "#  1.50 low"}) {
 		t.Errorf("submit -> %#v", msg)
 	}
 }

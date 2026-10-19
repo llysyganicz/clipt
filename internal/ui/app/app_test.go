@@ -779,3 +779,70 @@ func TestViewUsesAltScreen(t *testing.T) {
 		t.Errorf("edit view lacks the note:\n%s", view(m))
 	}
 }
+
+func TestCreateWithTagsStartsAfterFrontMatter(t *testing.T) {
+	const created = "---\ntags: [work, meeting]\n---\n"
+	dir := mkdir(t)
+	m := New(dir)
+	m = typed(m, "#work #meeting standup")
+	m, _ = press(m, "enter")
+	if m.mode != modeEdit || m.current == nil || m.current.Name != "standup" {
+		t.Fatalf("mode=%v current=%v", m.mode, m.current)
+	}
+	p := filepath.Join(dir, "standup.md")
+	old := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	os.Chtimes(p, old, old)
+	m, _ = press(m, "esc") // untouched: nothing is rewritten
+	info, _ := os.Stat(p)
+	if b, _ := os.ReadFile(p); string(b) != created || !info.ModTime().Equal(old) {
+		t.Errorf("untouched save: %q, rewritten=%v", b, !info.ModTime().Equal(old))
+	}
+
+	// The cursor row is the line after the fence right after creation.
+	m = New(dir)
+	m = typed(m, "#work review")
+	m, _ = press(m, "down", "enter")
+	m = typed(m, "x")
+	m, _ = press(m, "esc")
+	if b, _ := os.ReadFile(filepath.Join(dir, "review.md")); string(b) != "---\ntags: [work]\n---\nx\n" {
+		t.Errorf("review.md = %q", b)
+	}
+}
+
+func TestInsertTaggedTemplateMergesTags(t *testing.T) {
+	m, dir := openNoteForInsert(t, map[string]string{"meeting": "---\ntags: [meeting]\n---\n- agenda\n"}, "meeting")
+	m, _ = press(m, "ctrl+t", "enter")
+	if m.mode != modeEdit {
+		t.Fatalf("mode = %v", m.mode)
+	}
+	m = typeRunes(m, "X")
+	m, _ = press(m, "esc")
+	b, _ := os.ReadFile(filepath.Join(dir, "n.md"))
+	if string(b) != "---\ntags: [meeting]\n---\na- agendaXb\n" {
+		t.Errorf("n.md = %q", b)
+	}
+}
+
+func TestInsertTaggedTemplateIntoBrokenFrontMatter(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "n.md"), []byte("---\ntags: [work\n---\nab\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	addTemplates(t, dir, map[string]string{"meeting": "---\ntags: [meeting]\n---\n!\n"}, "meeting")
+	m := New(dir)
+	m, _ = feed(m, tea.WindowSizeMsg{Width: 60, Height: 12})
+	m, _ = press(m, "enter")
+	m, _ = deliver(m, rune1('e'))
+	m, _ = press(m, "ctrl+t", "enter")
+	if m.mode != modeEdit {
+		t.Fatalf("mode = %v", m.mode)
+	}
+	if v := view(m); !strings.Contains(v, "tags not merged") {
+		t.Errorf("no error in editor:\n%s", v)
+	}
+	m, _ = press(m, "esc")
+	b, _ := os.ReadFile(filepath.Join(dir, "n.md"))
+	if string(b) != "---\ntags: [work\n---\nab!\n" {
+		t.Errorf("n.md = %q", b)
+	}
+}

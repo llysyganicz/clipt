@@ -108,8 +108,28 @@ func TestParse(t *testing.T) {
 		},
 		{
 			name: "extra keys ignored",
-			in:   "---\ntitle: Meeting\nform:\n  - name: topic\n    type: text\ntags: [a, b]\n---\n# {{topic}}\n",
+			in:   "---\ntitle: Meeting\nform:\n  - name: topic\n    type: text\n---\n# {{topic}}\n",
 			want: Template{Fields: []Field{text("topic")}, Body: "# {{topic}}"},
+		},
+		{
+			name: "template with tags",
+			in:   "---\ntags: [meeting]\nform:\n  - name: topic\n    type: text\n---\n# {{topic}}\n",
+			want: Template{Fields: []Field{text("topic")}, Tags: []string{"meeting"}, Body: "# {{topic}}"},
+		},
+		{
+			name: "tags follow the tags key rules",
+			in:   "---\ntags:\n  - Work\n  - work\n  - 2026\n---\nx\n",
+			want: Template{Tags: []string{"Work", "2026"}, Body: "x"},
+		},
+		{
+			name: "placeholder in tags is literal",
+			in:   "---\ntags: [\"{{topic}}\"]\nform:\n  - name: topic\n    type: text\n---\n{{topic}}\n",
+			want: Template{Fields: []Field{text("topic")}, Tags: []string{"{{topic}}"}, Body: "{{topic}}"},
+		},
+		{
+			name:    "invalid tags",
+			in:      "---\ntags: meeting\n---\nx\n",
+			wantErr: "tags",
 		},
 		{
 			name: "label given",
@@ -256,9 +276,15 @@ func TestExpand(t *testing.T) {
 }
 
 func TestSkeletonParses(t *testing.T) {
+	if !strings.Contains(Skeleton, "\ntags: []\n") {
+		t.Errorf("skeleton lacks tags: []: %q", Skeleton)
+	}
 	tpl, err := Parse(Skeleton)
 	if err != nil {
 		t.Fatalf("Parse(Skeleton): %v", err)
+	}
+	if len(tpl.Tags) != 0 {
+		t.Errorf("tags = %q", tpl.Tags)
 	}
 	if len(tpl.Fields) != 1 || tpl.Fields[0].Name != "title" || tpl.Fields[0].Type != TypeText {
 		t.Errorf("fields = %+v", tpl.Fields)
@@ -268,5 +294,50 @@ func TestSkeletonParses(t *testing.T) {
 	}
 	if got := tpl.Expand(map[string]string{"title": "Hi"}); got != "# Hi" {
 		t.Errorf("expanded = %q", got)
+	}
+}
+
+func TestSkeletonWithTags(t *testing.T) {
+	tpl, err := Parse(SkeletonWithTags([]string{"meeting", "Meeting", "a, b"}))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if !reflect.DeepEqual(tpl.Tags, []string{"meeting", "a, b"}) {
+		t.Errorf("tags = %q", tpl.Tags)
+	}
+	if len(tpl.Fields) != 1 || tpl.Fields[0].Type != TypeText {
+		t.Errorf("fields = %+v", tpl.Fields)
+	}
+	if SkeletonWithTags(nil) != Skeleton {
+		t.Error("SkeletonWithTags(nil) differs from Skeleton")
+	}
+}
+
+func TestStoreListsTemplateTags(t *testing.T) {
+	dir := t.TempDir()
+	if err := EnsureDir(dir); err != nil {
+		t.Fatal(err)
+	}
+	s := Store(dir)
+	if err := s.Write("meeting", SkeletonWithTags([]string{"meeting", "work"})); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Write("daily", "# Daily\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Write("broken", "---\ntags: [x\n"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tags := map[string][]string{}
+	for _, n := range got {
+		tags[n.Name] = n.Tags
+	}
+	want := map[string][]string{"meeting": {"meeting", "work"}, "daily": nil, "broken": nil}
+	if !reflect.DeepEqual(tags, want) {
+		t.Errorf("tags = %q, want %q", tags, want)
 	}
 }

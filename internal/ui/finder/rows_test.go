@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/llysyganicz/clipt/internal/frontmatter"
 	"github.com/llysyganicz/clipt/internal/notes"
 )
 
@@ -37,7 +38,7 @@ func names(rows []Row) []string {
 	out := []string{}
 	for _, r := range rows {
 		if r.IsCreate() {
-			out = append(out, "+"+r.Create)
+			out = append(out, "+"+r.Create+tagSuffix(r.CreateTags))
 		} else {
 			out = append(out, r.Note.Name)
 		}
@@ -66,7 +67,88 @@ func TestBuildRows(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := names(BuildRows(all, tc.current, tc.query))
+			got := names(BuildRows(all, tc.current, ParseQuery(tc.query)))
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("rows = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func tagSuffix(tags []string) string {
+	if len(tags) == 0 {
+		return ""
+	}
+	return " " + frontmatter.Display(tags)
+}
+
+func TestParseQuery(t *testing.T) {
+	tests := []struct {
+		in   string
+		want Query
+	}{
+		{"", Query{}},
+		{"todo", Query{Name: "todo"}},
+		{" a  b ", Query{Name: " a  b "}},
+		{"a#b", Query{Name: "a#b"}},
+		{"#work", Query{Tags: []string{"work"}}},
+		{"#work #meet sta", Query{Name: "sta", Tags: []string{"work", "meet"}}},
+		{"sta  #work  up", Query{Name: "sta up", Tags: []string{"work"}}},
+		{"# sta", Query{Name: "sta"}},
+		{"##x", Query{Tags: []string{"#x"}}},
+	}
+	for _, tc := range tests {
+		if got := ParseQuery(tc.in); !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("ParseQuery(%q) = %#v, want %#v", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestTagQuery(t *testing.T) {
+	all := []notes.Note{
+		{Name: "standup", Tags: []string{"Work", "meeting"}},
+		{Name: "review", Tags: []string{"work"}},
+		{Name: "ideas", Tags: []string{"home"}},
+		{Name: "draft"},
+	}
+	tests := []struct {
+		name, query string
+		want        []string
+	}{
+		{"tag filter", "#work", []string{"standup", "review"}},
+		{"prefix match", "#wo", []string{"standup", "review"}},
+		{"case-insensitive", "#WORK", []string{"standup", "review"}},
+		{"several filters", "#work #meet", []string{"standup"}},
+		{"tags and name", "#work sta", []string{"standup", "+sta #work"}},
+		{"filter position", "sta #work", []string{"standup", "+sta #work"}},
+		{"bare hash ignored", "# sta", []string{"standup", "+sta"}},
+		{"untagged and a filter", "#home", []string{"ideas"}},
+		{"no match", "#nothing", []string{}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := names(BuildRows(all, nil, ParseQuery(tc.query)))
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("rows = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestCreateRowTags(t *testing.T) {
+	all := []notes.Note{{Name: "standup"}, {Name: "review", Tags: []string{"work"}}}
+	tests := []struct {
+		name, query string
+		want        []string
+	}{
+		{"create row with tags", "#work stand-up", []string{"+stand-up #work"}},
+		{"no create row for tags alone", "#work", []string{"review"}},
+		{"exact name with a tag filter", "#work standup", []string{}},
+		{"deduplicated tags", "#work #Work #meeting x", []string{"+x #work #meeting"}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := names(BuildRows(all, nil, ParseQuery(tc.query)))
 			if !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("rows = %v, want %v", got, tc.want)
 			}

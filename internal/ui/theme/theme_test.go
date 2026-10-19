@@ -16,11 +16,21 @@ func TestStylesRender(t *testing.T) {
 	styles := map[string]lipgloss.Style{
 		"Normal": Normal, "Selected": Selected, "Create": Create,
 		"Hint": Hint, "Error": Error, "Prompt": Prompt,
+		"Tag": Tag, "RowTag": RowTag,
 	}
 	for name, s := range styles {
 		if s.Render("x") == "" {
 			t.Errorf("%s rendered an empty string", name)
 		}
+	}
+}
+
+func TestTagStyles(t *testing.T) {
+	if Tag.GetForeground() == (lipgloss.NoColor{}) {
+		t.Error("Tag has no color")
+	}
+	if RowTag.GetForeground() == (lipgloss.NoColor{}) || !RowTag.GetFaint() {
+		t.Error("RowTag is not dimmed")
 	}
 }
 
