@@ -2,21 +2,33 @@
 
 clipt is a minimal, keyboard-driven TUI note-taking app. Notes are plain
 markdown files in a single flat directory: the file name is the note name,
-there are no folders, tags or sync. You fuzzy-find a note by name, read it
-rendered, and edit it in an insert-only text area that saves when you leave.
+there are no folders or sync. Notes can carry tags in YAML front matter. You
+fuzzy-find a note by name or tag, read it rendered, and edit it in an
+insert-only text area that saves when you leave. Templates with small forms
+can be inserted into a note while editing.
 
 ## Modes
 
-clipt has three modes plus a small directory picker. Every mode shows its
+clipt has four modes (finder, preview, edit and template insert) plus a
+small directory picker. Every mode shows its
 keys in the status bar at the bottom. `ctrl+q` quits from anywhere, saving
 the note first when you are editing one; `ctrl+c` quits without saving.
 
 ### Finder
 
 The home screen. Lists the notes in the notes directory by modification time,
-newest first, hiding the note that is currently open. Typing filters the list
-with a case-insensitive subsequence match against the note names, and when
-no note has exactly the typed name a last row offers to create it.
+newest first, hiding the note that is currently open, with each note's tags
+shown dimmed after its name. Typing filters the list with a case-insensitive
+subsequence match against the note names, and when no note has exactly the
+typed name a last row offers to create it.
+
+Words in the query that start with `#` filter by tag instead: `#wo` keeps
+the notes with a tag starting with `wo`, case-insensitively, and several
+`#` words must all match. The rest of the query is matched against the name,
+so `#work sta` lists the `work` notes whose name matches `sta`. Creating a
+note from such a query writes the tags into it: `#work standup` creates
+`standup.md` holding `tags: [work]` and opens it with the cursor below the
+front matter.
 
 | Key                 | Action                                                        |
 |---------------------|---------------------------------------------------------------|
@@ -25,6 +37,7 @@ no note has exactly the typed name a last row offers to create it.
 | `Down` / `ctrl+n`   | Move the selection down                                       |
 | `Enter`             | Open the selected note in preview, or create `<query>.md` on the create row and open it in edit mode |
 | `Esc`               | Back to the open note's preview, or quit when no note is open |
+| `ctrl+t`            | Switch to the template list (see [Templates](#templates))     |
 | `ctrl+o`            | Change the notes directory                                    |
 | `ctrl+q`            | Quit                                                          |
 | `ctrl+c`            | Quit                                                          |
@@ -32,6 +45,9 @@ no note has exactly the typed name a last row offers to create it.
 ### Preview
 
 Shows the open note as rendered markdown, word-wrapped to the terminal width.
+The front matter is not rendered; when the note has tags they are shown in a
+header above the content that stays in place while scrolling. Invalid front
+matter is reported in that header instead.
 
 | Key              | Action                                                  |
 |------------------|---------------------------------------------------------|
@@ -59,9 +75,29 @@ is no save command; leaving edit mode writes the note if it changed.
 | arrow keys, `Home`, `End`             | Move the cursor                          |
 | `Tab`                                 | Insert two spaces                        |
 | `Shift+Tab`                           | Remove up to two leading spaces          |
+| `ctrl+t`                              | Insert a template at the cursor          |
 | `Esc`                                 | Save (if changed) and back to preview    |
 | `ctrl+q`                              | Save (if changed) and quit               |
 | `ctrl+c`                              | Quit without saving                      |
+
+### Template insert
+
+Opened with `ctrl+t` while editing a note. A picker lists the templates,
+filtered like the finder (name and `#tag` words) and showing their tags.
+Picking a template without fields inserts its body at once; otherwise a form
+opens with one row per field. The body is inserted at the cursor and the
+template's tags are added to the note (see [Tags](#tags)).
+
+| Key                         | Action                                               |
+|-----------------------------|------------------------------------------------------|
+| any printable key           | Edit the picker query or the focused form value      |
+| `Up` / `Down`, `ctrl+p` / `ctrl+n` | Move the picker selection                     |
+| `Enter`                     | Pick the template; in the form, next row or submit on the last row |
+| `Tab` / `Shift+Tab`, `Up` / `Down` | Move between form rows                        |
+| `Left` / `Right`            | Change an option field                               |
+| `Esc`                       | Back to edit mode with the note unchanged            |
+| `ctrl+q`                    | Save the note (if changed) and quit                  |
+| `ctrl+c`                    | Quit without saving                                  |
 
 ### Notes directory picker
 
@@ -76,6 +112,65 @@ on `ctrl+o` from the finder. It is a single path input prefilled with
 | `ctrl+q`  | Quit                                                                   |
 | `ctrl+c`  | Quit                                                                   |
 
+## Tags
+
+A note may start with YAML front matter: the first line is exactly `---` and
+the block ends at the next `---` line. Its `tags` key lists the note's tags,
+in either YAML list form:
+
+```markdown
+---
+tags: [work, meeting]
+---
+# Standup
+```
+
+```yaml
+tags:
+  - work
+  - meeting
+```
+
+Tags keep the order and case you write; blank entries and repeats (compared
+case-insensitively) are ignored, and other front matter keys are left alone.
+Front matter that is not closed, is not valid YAML or whose `tags` is not a
+list counts as invalid: the note is still listed, just without tags. clipt
+never rewrites front matter on its own; the only change it makes is adding a
+template's tags when the template is inserted, creating the front matter when
+the note has none. Tags are shown as `#work #meeting`.
+
+## Templates
+
+Templates are markdown files in the `.templates` directory inside the notes
+directory; they are never listed as notes. In the finder, `ctrl+t` switches to
+the template list: `Enter` opens a template in edit mode, the create row
+creates a new template from a starter skeleton (with the query's `#tags`
+filled in) and `Esc` returns to the notes.
+
+A template may start with front matter declaring `tags` and a `form`:
+
+```markdown
+---
+tags: [meeting]
+form:
+  - name: topic
+    label: Topic
+    type: text
+  - name: prio
+    type: option
+    options: [low, high]
+---
+## {{topic}} ({{prio}})
+
+- agenda
+```
+
+Each field has a `name`, a `type` and an optional `label` (defaults to the
+name). Types are `text` (starts empty), `number` (starts at `0`, must be a
+decimal number) and `option` (starts at the first entry of `options`). Every
+`{{name}}` in the body is replaced by the field's value; placeholders that
+name no field are kept as written. Template tags are taken literally.
+
 ## Notes directory and config
 
 The only setting is the notes directory. It is stored as a single key,
@@ -86,7 +181,7 @@ config directory:
 |----------|--------------------------------------------------------------------|
 | Linux    | `$XDG_CONFIG_HOME/clipt/config.toml` (default `~/.config/clipt/config.toml`) |
 | Windows  | `%AppData%\clipt\config.toml`                                      |
-| macOS    | `~/Library/Application Support/clipt/config.toml`                  |
+| macOS (untested) | `~/Library/Application Support/clipt/config.toml`          |
 
 ```toml
 notes_dir = "/home/user/notes"
@@ -124,7 +219,10 @@ fetches the assets of a release in one go.
 
 ## Build from source
 
-Requires the Go version declared in `go.mod` (or newer).
+Requires the Go version declared in `go.mod` (or newer). This is also the
+way to run clipt on macOS, which has no release build. clipt only uses
+cross-platform standard library APIs, so it should work there, but macOS is
+untested.
 
 ```sh
 go build ./cmd/clipt
