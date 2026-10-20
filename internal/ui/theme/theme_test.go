@@ -39,6 +39,7 @@ func TestEditorStylesRender(t *testing.T) {
 	for name, st := range map[string]lipgloss.Style{
 		"focused.LineNumber": s.Focused.LineNumber, "focused.CursorLineNumber": s.Focused.CursorLineNumber,
 		"focused.Text": s.Focused.Text, "blurred.LineNumber": s.Blurred.LineNumber,
+		"focused.Selection": s.Focused.Selection, "blurred.Selection": s.Blurred.Selection,
 	} {
 		if st.Render("x") == "" {
 			t.Errorf("%s rendered an empty string", name)
@@ -49,6 +50,14 @@ func TestEditorStylesRender(t *testing.T) {
 	}
 	if s.Cursor.Color == nil {
 		t.Error("cursor has no color")
+	}
+	for name, st := range map[string]lipgloss.Style{"focused": s.Focused.Selection, "blurred": s.Blurred.Selection} {
+		if st.GetBackground() == (lipgloss.NoColor{}) {
+			t.Errorf("%s selection has no background", name)
+		}
+		if st.GetBackground() == s.Focused.Text.GetBackground() {
+			t.Errorf("%s selection background equals the text background", name)
+		}
 	}
 }
 

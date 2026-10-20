@@ -3,8 +3,10 @@ schema: spec-driven
 context: |
   Product: clipt, a minimal, keyboard-driven TUI note-taking app.
   Notes are markdown files in ONE flat directory (no subfolders); file name == note name.
-  Modes: fuzzy finder (by file name), preview (rendered markdown), edit (insert-only, no vim normal mode),
-  template insert (picker + form, entered from edit with ctrl+t).
+  Modes: fuzzy finder (by file name), preview (rendered markdown), edit (always insert mode, no vim
+  normal mode; Shift/Ctrl+Shift+arrows and ctrl+g select, typing replaces the selection,
+  ctrl+shift+c copies it to the system clipboard), template insert (picker + form, entered from
+  edit with ctrl+t).
   Finder: lists notes by mtime (newest first), hides the current note, fuzzy-matches the query
   literally against names (no .md handling), and appends a last "Create <query>" row when the
   query is non-empty and no note has that exact name. Enter on a note opens preview; enter on the

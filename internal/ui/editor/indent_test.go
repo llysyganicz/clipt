@@ -136,21 +136,3 @@ func TestShiftTabBelowFirstScreenKeepsView(t *testing.T) {
 		}
 	}
 }
-
-func TestSelectionKeysAreInert(t *testing.T) {
-	s := setup(t, map[string]string{"todo": "ab\ncd"})
-	m := open(t, s, "todo")
-	m, _ = press(m, "up")
-	m, _ = press(m, "home")
-	before, col := m.ta.Value(), cursorCol(m)
-	for _, k := range []string{"shift+right", "shift+left", "shift+down", "shift+up", "ctrl+shift+right", "ctrl+g"} {
-		m, _ = press(m, k)
-		if m.ta.Value() != before || cursorCol(m) != col || m.ta.Line() != 0 {
-			t.Errorf("%s changed the buffer or cursor: %q line %d col %d", k, m.ta.Value(), m.ta.Line(), cursorCol(m))
-		}
-	}
-	m = runes(m, "X")
-	if got := m.ta.Value(); got != "Xab\ncd" {
-		t.Errorf("typing after selection keys: %q", got)
-	}
-}

@@ -18,9 +18,9 @@ var (
 var cursorColor = lipgloss.Color(fg)
 
 // EditorStyles returns the styles for the edit mode's text area: text in the
-// normal foreground, no cursor line background and no prompt styling (the
-// editor draws its own gutter through the prompt). Selection is left
-// unstyled because the editor disables the selection keys.
+// normal foreground, no cursor line background, no prompt styling (the
+// editor draws its own gutter through the prompt) and the selection on a
+// lighter background with the normal foreground.
 func EditorStyles() textarea.Styles {
 	text := lipgloss.NewStyle().Foreground(lipgloss.Color(fg))
 	focused := textarea.StyleState{
@@ -31,6 +31,7 @@ func EditorStyles() textarea.Styles {
 		LineNumber:       LineNumber,
 		Placeholder:      Hint,
 		Prompt:           lipgloss.NewStyle(),
+		Selection:        lipgloss.NewStyle().Background(lipgloss.Color(bg2)),
 		Text:             text,
 	}
 	blurred := focused

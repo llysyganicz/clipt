@@ -7,6 +7,7 @@ import "charm.land/lipgloss/v2"
 // Gruvbox dark palette.
 const (
 	bg     = "#282828"
+	bg2    = "#504945"
 	fg     = "#ebdbb2"
 	yellow = "#fabd2f"
 	aqua   = "#8ec07c"

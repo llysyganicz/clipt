@@ -1,6 +1,6 @@
 // Package editor implements the edit mode: the current note's raw markdown
-// in an insert-only text area. Esc saves the note when it changed and hands
-// control back to the caller.
+// in a text area with keyboard selection but no modal editing. Esc saves the
+// note when it changed and hands control back to the caller.
 package editor
 
 import (
@@ -30,6 +30,7 @@ const (
 	indent        = "  " // what Tab inserts and Shift+Tab removes
 	hints         = "esc save & back · ctrl+t template · ctrl+q save & quit"
 	templateHints = "esc save & back · ctrl+q save & quit"
+	copyHint      = " · ctrl+shift+c copy" // appended while a selection exists
 )
 
 // repositionMsg is a no-op message sent through the text area so it scrolls
@@ -78,19 +79,11 @@ func load(store notes.Store, note notes.Note, template bool) (Model, error) {
 	ta.CharLimit = 0
 	ta.MaxHeight = 0
 	ta.MaxWidth = 0
+	// The text area's default keys, selection and copy included; the one
+	// override is ctrl+t, which means templates everywhere, so the text
+	// area must never transpose.
 	ta.KeyMap = textarea.DefaultKeyMap()
-	// ctrl+t means templates everywhere; never let the text area transpose.
 	ta.KeyMap.TransposeCharacterBackward = key.NewBinding(key.WithDisabled())
-	// The editor is insert-only: no text selection or clipboard copy.
-	off := key.NewBinding(key.WithDisabled())
-	ta.KeyMap.SelectCharacterForward = off
-	ta.KeyMap.SelectCharacterBackward = off
-	ta.KeyMap.SelectWordForward = off
-	ta.KeyMap.SelectWordBackward = off
-	ta.KeyMap.SelectLineUp = off
-	ta.KeyMap.SelectLineDown = off
-	ta.KeyMap.SelectAll = off
-	ta.KeyMap.CopySelection = off
 	ta.SetStyles(theme.EditorStyles())
 	ta.Focus()
 	ta.SetValue(content)
@@ -175,23 +168,30 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	}
 	var cmd tea.Cmd
 	m.ta, cmd = m.ta.Update(msg)
+	// The text area reports clipboard failures in its Err field rather than
+	// as a message; show them where write failures are shown.
+	if m.ta.Err != nil {
+		m.err = m.ta.Err.Error()
+		m.ta.Err = nil
+	}
 	if m.syncGutterWidth() {
 		m.scrollToCursor()
 	}
 	return m, cmd
 }
 
-// Insert inserts text at the cursor as if typed, leaves the cursor after it
-// and scrolls the view to it.
+// Insert inserts text at the cursor as if typed: a selection is replaced,
+// the cursor ends after the text and the view scrolls to it.
 func (m Model) Insert(text string) Model {
+	m.ta.DeleteSelection()
 	m.ta.InsertString(text)
 	m.syncGutterWidth()
 	m.scrollToCursor()
 	return m
 }
 
-// InsertTemplate inserts a template's body at the cursor as Insert does,
-// then merges the template's tags into the note's front matter. The cursor
+// InsertTemplate inserts a template's body at the cursor as Insert does
+// (replacing a selection), then merges the template's tags into the note's front matter. The cursor
 // stays after the inserted body, moved by the lines the merge added or
 // removed above it. When the merge is refused the body stays inserted, the
 // front matter is left as it was and the error is shown.
@@ -282,15 +282,17 @@ func (m Model) SaveAndQuit() (Model, tea.Cmd) {
 	return m, tea.Quit
 }
 
-// statusBar renders the bottom line: hints left, the note name (or
-// "template: <name>") right.
+// statusBar renders the bottom line: hints left (with the copy key while a
+// selection exists), the note name (or "template: <name>") right.
 func (m Model) statusBar() string {
-	left := theme.Hint.Render(hints)
-	label := m.note.Name
+	keys, label := hints, m.note.Name
 	if m.template {
-		left = theme.Hint.Render(templateHints)
-		label = "template: " + m.note.Name
+		keys, label = templateHints, "template: "+m.note.Name
 	}
+	if m.ta.HasSelection() {
+		keys += copyHint
+	}
+	left := theme.Hint.Render(keys)
 	avail := m.width - lipgloss.Width(left) - 1
 	name := []rune(label)
 	if avail <= 0 {

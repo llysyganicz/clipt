@@ -3,8 +3,8 @@
 clipt is a minimal, keyboard-driven TUI note-taking app. Notes are plain
 markdown files in a single flat directory: the file name is the note name,
 there are no folders or sync. Notes can carry tags in YAML front matter. You
-fuzzy-find a note by name or tag, read it rendered, and edit it in an
-insert-only text area that saves when you leave. Templates with small forms
+fuzzy-find a note by name or tag, read it rendered, and edit it in a plain
+text area that saves when you leave. Templates with small forms
 can be inserted into a note while editing.
 
 ## Modes
@@ -66,19 +66,32 @@ returns to the finder.
 ### Edit
 
 The note's raw markdown in a text area with line numbers. There is no modal
-editing: every key inserts or moves the cursor, like a plain text box. There
-is no save command; leaving edit mode writes the note if it changed.
+editing: every key inserts, moves the cursor or selects, like a plain text
+box. There is no save command; leaving edit mode writes the note if it
+changed.
 
 | Key                                   | Action                                   |
 |---------------------------------------|------------------------------------------|
-| printable keys, `Enter`, `Backspace`, `Delete` | Edit the text                   |
-| arrow keys, `Home`, `End`             | Move the cursor                          |
-| `Tab`                                 | Insert two spaces                        |
+| printable keys, `Enter`, `Backspace`, `Delete` | Edit the text (replacing or removing the selection) |
+| arrow keys, `Home`, `End`             | Move the cursor (clearing the selection) |
+| `Shift+Left` / `Shift+Right`          | Select by character                      |
+| `Shift+Up` / `Shift+Down`             | Select by line                           |
+| `Ctrl+Shift+Left` / `Ctrl+Shift+Right` | Select by word                          |
+| `ctrl+g`                              | Select all                               |
+| `ctrl+shift+c`                        | Copy the selection to the system clipboard |
+| `Tab`                                 | Insert two spaces (replacing the selection) |
 | `Shift+Tab`                           | Remove up to two leading spaces          |
-| `ctrl+t`                              | Insert a template at the cursor          |
+| `ctrl+t`                              | Insert a template at the cursor (replacing the selection) |
 | `Esc`                                 | Save (if changed) and back to preview    |
 | `ctrl+q`                              | Save (if changed) and quit               |
 | `ctrl+c`                              | Quit without saving                      |
+
+Copying uses the system clipboard: on Linux one of `xclip`, `xsel` or
+`wl-copy` must be installed, Windows and macOS need nothing. When the
+clipboard cannot be written the error is shown above the status bar. Some
+terminals handle `ctrl+shift+c` themselves or report it as `ctrl+c`, which
+quits without saving; the status bar shows the copy key while a selection
+exists.
 
 ### Template insert
 
