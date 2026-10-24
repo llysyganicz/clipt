@@ -89,12 +89,14 @@ func TestNoColorLiteralsOutsideTheme(t *testing.T) {
 			return err
 		}
 		if d.IsDir() {
-			if d.Name() == "theme" || d.Name() == "openspec" || strings.HasPrefix(d.Name(), ".") && p != root {
+			if d.Name() == "openspec" || strings.HasPrefix(d.Name(), ".") && p != root {
 				return filepath.SkipDir
 			}
 			return nil
 		}
-		if !strings.HasSuffix(p, ".go") {
+		// The palette lives in TOML files; Go code, this package included,
+		// must not hard-code colors. Test files may name colors to check.
+		if !strings.HasSuffix(p, ".go") || strings.HasSuffix(p, "_test.go") {
 			return nil
 		}
 		b, err := os.ReadFile(p)

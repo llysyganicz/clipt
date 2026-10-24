@@ -186,8 +186,7 @@ name no field are kept as written. Template tags are taken literally.
 
 ## Notes directory and config
 
-The only setting is the notes directory. It is stored as a single key,
-`notes_dir`, in a TOML file named `clipt/config.toml` under your platform's
+Settings live in a TOML file named `clipt/config.toml` under your platform's
 config directory:
 
 | Platform | Config file                                                        |
@@ -196,12 +195,90 @@ config directory:
 | Windows  | `%AppData%\clipt\config.toml`                                      |
 | macOS (untested) | `~/Library/Application Support/clipt/config.toml`          |
 
+| Key         | Required | Meaning                                                   |
+|-------------|----------|-----------------------------------------------------------|
+| `notes_dir` | yes      | Absolute path of the notes directory                      |
+| `theme`     | no       | Name of the color theme (see [Themes](#themes)); default `gruvbox_dark` |
+
 ```toml
 notes_dir = "/home/user/notes"
+theme = "gruvbox_light"
 ```
 
-clipt writes nothing outside the notes directory except this file. The
-directory is chosen in the app; you never need to edit the file by hand.
+Unknown keys are ignored. clipt writes nothing outside the notes directory
+except this file. The notes directory is chosen in the app, which rewrites the
+file keeping the `theme` key; the theme is the one setting you edit by hand.
+
+## Themes
+
+clipt draws every screen, including rendered markdown, from one terminal
+color palette. The palette comes from the theme named by the `theme` key;
+without the key clipt uses `gruvbox_dark` and looks exactly as it did before
+themes existed. Two themes are built into the binary:
+
+| Theme           | Palette                 |
+|-----------------|-------------------------|
+| `gruvbox_dark`  | gruvbox dark (default)  |
+| `gruvbox_light` | gruvbox light           |
+
+A theme named `<name>` is looked up in this order:
+
+1. `<config dir>/clipt/themes/<name>.toml`, next to `config.toml` (for example
+   `~/.config/clipt/themes/<name>.toml` on Linux);
+2. the built-in theme of that name.
+
+A file in the themes directory wins, so saving your own `gruvbox_dark.toml`
+there replaces the built-in one. clipt never writes to that directory; the
+release archives ship both built-in themes in a `themes/` folder, so copy one
+of them in as a starting point.
+
+A theme file is flat TOML with one `"#rrggbb"` color per key: `background`,
+`foreground`, the sixteen standard ANSI colors and an optional `selection`.
+This is the built-in `gruvbox_dark`:
+
+```toml
+background = "#282828"
+foreground = "#ebdbb2"
+selection = "#504945"
+
+black = "#282828"
+red = "#cc241d"
+green = "#98971a"
+yellow = "#d79921"
+blue = "#458588"
+magenta = "#b16286"
+cyan = "#689d6a"
+white = "#a89984"
+
+bright_black = "#928374"
+bright_red = "#fb4934"
+bright_green = "#b8bb26"
+bright_yellow = "#fabd2f"
+bright_blue = "#83a598"
+bright_magenta = "#d3869b"
+bright_cyan = "#8ec07c"
+bright_white = "#ebdbb2"
+```
+
+Every key except `selection` is required. `selection` is the background of
+the selected text in edit mode and defaults to `bright_black` when omitted.
+Unknown keys are ignored, so a file with extra entries (say a `cursor` color
+from your terminal's config) loads fine.
+
+The slots are used like this: ordinary text in `foreground`; the finder's
+rows on `background`; the selected row, prompts and the cursor's line number
+in `bright_yellow`; the create row and tags in `bright_cyan`; errors in
+`bright_red`; hints, dimmed tags and line numbers in `bright_black`. In
+rendered markdown, headings and table headers use `bright_yellow`, links and
+code `bright_cyan`, quotes and rules `bright_black`, list markers
+`bright_blue` and ticked task boxes `bright_green`. Fenced code blocks are not
+syntax highlighted.
+
+A theme that cannot be used stops clipt before it starts, with a message on
+stderr and exit status 1: an unknown name reports the path that was looked
+for, and a file that is not valid TOML, lacks a key or holds a value that is
+not a `#rrggbb` color reports the file and, where there is one, the key.
+Nothing is written in that case.
 
 ## Install
 
@@ -211,11 +288,11 @@ account that has access to it to download the assets.
 
 Each release carries:
 
-| Asset                             | Contents                 |
-|-----------------------------------|--------------------------|
-| `clipt_X.Y.Z_linux_amd64.tar.gz`  | `clipt` and `README.md`     |
-| `clipt_X.Y.Z_windows_amd64.zip`   | `clipt.exe` and `README.md` |
-| `checksums.txt`                   | SHA-256 sums of both archives |
+| Asset                             | Contents                                        |
+|-----------------------------------|-------------------------------------------------|
+| `clipt_X.Y.Z_linux_amd64.tar.gz`  | `clipt`, `README.md` and the built-in `themes/` |
+| `clipt_X.Y.Z_windows_amd64.zip`   | `clipt.exe`, `README.md` and the built-in `themes/` |
+| `checksums.txt`                   | SHA-256 sums of both archives                   |
 
 Download the archive for your platform, optionally check it against
 `checksums.txt`, extract it and put the `clipt` binary somewhere on your

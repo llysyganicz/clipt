@@ -48,18 +48,20 @@ type Model struct {
 	input   textinput.Model
 	pending string // absolute path awaiting create confirmation
 	err     string
+	theme   string // theme name written back to the config, may be empty
 }
 
-// New creates a picker. prefill is the initial input text and errMsg an
-// optional error shown until the first keypress.
-func New(origin Origin, prefill, errMsg string) Model {
+// New creates a picker. prefill is the initial input text, errMsg an
+// optional error shown until the first keypress and themeName the configured
+// theme name (possibly empty), kept in the config when a directory is saved.
+func New(origin Origin, prefill, errMsg, themeName string) Model {
 	ti := textinput.New()
 	ti.Prompt = "Notes directory: "
 	ti.SetStyles(theme.InputStyles())
 	ti.SetValue(prefill)
 	ti.CursorEnd()
 	ti.Focus()
-	return Model{origin: origin, input: ti, err: errMsg}
+	return Model{origin: origin, input: ti, err: errMsg, theme: themeName}
 }
 
 // Origin returns the entry point that opened the picker.
@@ -148,7 +150,7 @@ func (m Model) updateConfirm(key tea.KeyPressMsg) (Model, tea.Cmd) {
 
 // accept saves the config; on failure the picker stays open with the error.
 func (m Model) accept(dir string) (Model, tea.Cmd) {
-	if err := config.Save(dir); err != nil {
+	if err := config.Save(config.Config{NotesDir: dir, Theme: m.theme}); err != nil {
 		m.state = stateInput
 		m.err = err.Error()
 		return m, nil

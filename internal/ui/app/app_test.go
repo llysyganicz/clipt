@@ -59,7 +59,7 @@ func press(m Model, keys ...string) (Model, bool) {
 
 func TestSwitcherToggle(t *testing.T) {
 	dir := mkdir(t, "c", "b", "a") // a newest
-	m := New(dir)
+	m := New(dir, "")
 	m, _ = press(m, "enter") // open a
 	if m.mode != modePreview || m.current.Name != "a" {
 		t.Fatalf("mode=%v current=%v", m.mode, m.current)
@@ -79,7 +79,7 @@ func TestSwitcherToggle(t *testing.T) {
 }
 
 func TestEscQuitsWithoutCurrent(t *testing.T) {
-	m := New(mkdir(t, "a"))
+	m := New(mkdir(t, "a"), "")
 	_, quit := press(m, "esc")
 	if !quit {
 		t.Error("esc without current note did not quit")
@@ -87,7 +87,7 @@ func TestEscQuitsWithoutCurrent(t *testing.T) {
 }
 
 func TestEscWithCurrentShowsPreview(t *testing.T) {
-	m := New(mkdir(t, "a", "b"))
+	m := New(mkdir(t, "a", "b"), "")
 	m, _ = press(m, "enter")
 	m, _ = press(m, "esc")     // note -> finder
 	m, quit := press(m, "esc") // finder -> preview of current
@@ -98,7 +98,7 @@ func TestEscWithCurrentShowsPreview(t *testing.T) {
 
 func TestCurrentDisappeared(t *testing.T) {
 	dir := mkdir(t, "a", "b")
-	m := New(dir)
+	m := New(dir, "")
 	m, _ = press(m, "enter") // open b
 	m, _ = press(m, "esc")
 	os.Remove(filepath.Join(dir, "b.md"))
@@ -116,7 +116,7 @@ func TestCurrentDisappeared(t *testing.T) {
 
 func TestCreateOpensNote(t *testing.T) {
 	dir := mkdir(t)
-	m := New(dir)
+	m := New(dir, "")
 	m = typed(m, "new")
 	m, _ = press(m, "enter")
 	if m.mode != modeEdit || m.current == nil || m.current.Name != "new" {
@@ -128,7 +128,7 @@ func TestCreateOpensNote(t *testing.T) {
 }
 
 func TestPickerStartupCancelQuits(t *testing.T) {
-	m := NewPicker("", "")
+	m := NewPicker("", "", "")
 	_, quit := press(m, "esc")
 	if !quit {
 		t.Error("esc at startup picker did not quit")
@@ -138,7 +138,7 @@ func TestPickerStartupCancelQuits(t *testing.T) {
 func TestPickerStartupAccept(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	dir := mkdir(t, "a")
-	m, _ := feed(NewPicker("", ""), picker.DirAcceptedMsg{Dir: dir})
+	m, _ := feed(NewPicker("", "", ""), picker.DirAcceptedMsg{Dir: dir})
 	if m.mode != modeFinder || m.dir != dir || len(m.finder.Rows()) != 1 {
 		t.Errorf("mode=%v dir=%q rows=%d", m.mode, m.dir, len(m.finder.Rows()))
 	}
@@ -154,7 +154,7 @@ func openPickerFromFinder(t *testing.T, m Model) Model {
 }
 
 func TestPickerEscRestoresFinder(t *testing.T) {
-	m := New(mkdir(t, "a", "b"))
+	m := New(mkdir(t, "a", "b"), "")
 	m, _ = press(m, "enter")
 	m, _ = press(m, "esc")
 	m = typed(m, "zz")
@@ -168,7 +168,7 @@ func TestPickerEscRestoresFinder(t *testing.T) {
 
 func TestDirChangeClearsCurrent(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	m := New(mkdir(t, "a", "b"))
+	m := New(mkdir(t, "a", "b"), "")
 	m, _ = press(m, "enter")
 	m, _ = press(m, "esc")
 	m = openPickerFromFinder(t, m)
@@ -184,7 +184,7 @@ func TestDirChangeClearsCurrent(t *testing.T) {
 
 func TestSameDirKeepsCurrent(t *testing.T) {
 	dir := mkdir(t, "a", "b")
-	m := New(dir)
+	m := New(dir, "")
 	m, _ = press(m, "enter")
 	m, _ = press(m, "esc")
 	m = openPickerFromFinder(t, m)
@@ -200,7 +200,7 @@ func TestSameDirKeepsCurrent(t *testing.T) {
 }
 
 func TestOpenAndCreatedSetCurrent(t *testing.T) {
-	m := New(mkdir(t, "o", "c"))
+	m := New(mkdir(t, "o", "c"), "")
 	m, _ = feed(m, finder.OpenNoteMsg{Note: notes.Note{Name: "o"}})
 	if m.current.Name != "o" {
 		t.Error("OpenNoteMsg")
@@ -212,10 +212,10 @@ func TestOpenAndCreatedSetCurrent(t *testing.T) {
 }
 
 func TestNewPickerPrefill(t *testing.T) {
-	if v := view(NewPicker("", "")); !strings.Contains(v, "~/notes") {
+	if v := view(NewPicker("", "", "")); !strings.Contains(v, "~/notes") {
 		t.Errorf("first run view lacks ~/notes:\n%s", v)
 	}
-	v := view(NewPicker("/mnt/gone", "directory does not exist: /mnt/gone"))
+	v := view(NewPicker("/mnt/gone", "directory does not exist: /mnt/gone", ""))
 	if !strings.Contains(v, "/mnt/gone") || !strings.Contains(v, "does not exist") {
 		t.Errorf("stale view:\n%s", v)
 	}
@@ -271,7 +271,7 @@ func view(m Model) string { return uitest.Strip(m.View().Content) }
 
 func TestRenameUpdatesCurrent(t *testing.T) {
 	dir := mkdir(t, "todo")
-	m := New(dir)
+	m := New(dir, "")
 	m, _ = press(m, "enter")
 	m, _ = deliver(m, rune1('r'))
 	m, _ = deliver(m, rune1('2'))
@@ -295,7 +295,7 @@ func TestRenameUpdatesCurrent(t *testing.T) {
 
 func TestDeleteClearsCurrent(t *testing.T) {
 	dir := mkdir(t, "keep", "todo") // todo newest
-	m := New(dir)
+	m := New(dir, "")
 	m, _ = press(m, "enter")
 	m, _ = deliver(m, rune1('d'))
 	m, _ = deliver(m, rune1('y'))
@@ -315,7 +315,7 @@ func TestDeleteClearsCurrent(t *testing.T) {
 }
 
 func TestPreviewBackEmptyQuery(t *testing.T) {
-	m := New(mkdir(t, "a", "b"))
+	m := New(mkdir(t, "a", "b"), "")
 	m, _ = press(m, "enter")
 	m, _ = press(m, "esc") // finder
 	nm, _ := m.Update(rune1('x'))
@@ -329,7 +329,7 @@ func TestPreviewBackEmptyQuery(t *testing.T) {
 
 func TestUnreadableNoteReturnsToFinder(t *testing.T) {
 	dir := mkdir(t, "a", "b")
-	m := New(dir)
+	m := New(dir, "")
 	os.Remove(filepath.Join(dir, "b.md")) // listed, then removed
 	m, _ = press(m, "enter")
 	if m.mode != modeFinder || m.current != nil {
@@ -341,7 +341,7 @@ func TestUnreadableNoteReturnsToFinder(t *testing.T) {
 }
 
 func TestEditReturnsToPreview(t *testing.T) {
-	m := New(mkdir(t, "a"))
+	m := New(mkdir(t, "a"), "")
 	m, _ = press(m, "enter")
 	m, _ = deliver(m, rune1('e'))
 	if m.mode != modeEdit {
@@ -358,7 +358,7 @@ func TestEditReturnsToPreview(t *testing.T) {
 
 func TestCreateTypeEscShowsPreview(t *testing.T) {
 	dir := mkdir(t)
-	m := New(dir)
+	m := New(dir, "")
 	m = typed(m, "ideas")
 	m, _ = press(m, "enter")
 	if m.mode != modeEdit {
@@ -379,7 +379,7 @@ func TestCreateTypeEscShowsPreview(t *testing.T) {
 
 func TestEditUnreadableReturnsToFinder(t *testing.T) {
 	dir := mkdir(t, "a")
-	m := New(dir)
+	m := New(dir, "")
 	m, _ = press(m, "enter")
 	os.Remove(filepath.Join(dir, "a.md"))
 	m, _ = deliver(m, rune1('e'))
@@ -392,7 +392,7 @@ func TestEditUnreadableReturnsToFinder(t *testing.T) {
 }
 
 func TestResizeReachesEditor(t *testing.T) {
-	m := New(mkdir(t, "a"))
+	m := New(mkdir(t, "a"), "")
 	m, _ = feed(m, tea.WindowSizeMsg{Width: 60, Height: 12})
 	m, _ = press(m, "enter")
 	m, _ = deliver(m, rune1('e'))
@@ -406,7 +406,7 @@ func TestResizeReachesEditor(t *testing.T) {
 }
 
 func TestResizeReachesPreview(t *testing.T) {
-	m := New(mkdir(t, "a"))
+	m := New(mkdir(t, "a"), "")
 	m, _ = feed(m, tea.WindowSizeMsg{Width: 60, Height: 12})
 	m, _ = press(m, "enter")
 	if got := strings.Count(view(m), "\n") + 1; got != 12 {
@@ -446,7 +446,7 @@ func typeRunes(m Model, s string) Model {
 func TestFinderScopeToggle(t *testing.T) {
 	dir := mkdir(t, "todo")
 	addTemplates(t, dir, map[string]string{"meeting": "# m\n"}, "meeting")
-	m := New(dir)
+	m := New(dir, "")
 	m = typeRunes(m, "to")
 	m, _ = press(m, "ctrl+t")
 	if m.mode != modeFinder || m.finder.Scope() != finder.ScopeTemplates || m.finder.Query() != "" {
@@ -469,7 +469,7 @@ func TestFinderScopeToggle(t *testing.T) {
 }
 
 func TestTemplateScopeEscReturnsToNotes(t *testing.T) {
-	m := New(mkdir(t, "todo"))
+	m := New(mkdir(t, "todo"), "")
 	m, _ = press(m, "ctrl+t")
 	m, quit := press(m, "esc")
 	if quit || m.mode != modeFinder || m.finder.Scope() != finder.ScopeNotes {
@@ -480,7 +480,7 @@ func TestTemplateScopeEscReturnsToNotes(t *testing.T) {
 func TestEditTemplateKeepsCurrent(t *testing.T) {
 	dir := mkdir(t, "todo")
 	addTemplates(t, dir, map[string]string{"meeting": "# m\n"}, "meeting")
-	m := New(dir)
+	m := New(dir, "")
 	m, _ = press(m, "enter") // todo is current
 	m, _ = press(m, "esc")
 	m, _ = press(m, "ctrl+t")
@@ -514,7 +514,7 @@ func TestEditTemplateKeepsCurrent(t *testing.T) {
 
 func TestCreateTemplateFromFinder(t *testing.T) {
 	dir := mkdir(t, "todo")
-	m := New(dir)
+	m := New(dir, "")
 	m, _ = press(m, "ctrl+t")
 	m = typeRunes(m, "meeting")
 	m, _ = press(m, "enter")
@@ -538,7 +538,7 @@ func TestCreateTemplateFromFinder(t *testing.T) {
 }
 
 func TestChangeDirFromTemplateScope(t *testing.T) {
-	m := New(mkdir(t, "todo"))
+	m := New(mkdir(t, "todo"), "")
 	m, _ = press(m, "ctrl+t")
 	m = openPickerFromFinder(t, m)
 	m, quit := press(m, "esc")
@@ -550,7 +550,7 @@ func TestChangeDirFromTemplateScope(t *testing.T) {
 func TestUnreadableTemplateKeepsScopeAndCurrent(t *testing.T) {
 	dir := mkdir(t, "todo")
 	addTemplates(t, dir, map[string]string{"meeting": "# m\n"}, "meeting")
-	m := New(dir)
+	m := New(dir, "")
 	m, _ = press(m, "enter")
 	m, _ = press(m, "esc")
 	m, _ = press(m, "ctrl+t")
@@ -576,7 +576,7 @@ func openNoteForInsert(t *testing.T, files map[string]string, order ...string) (
 		t.Fatal(err)
 	}
 	addTemplates(t, dir, files, order...)
-	m := New(dir)
+	m := New(dir, "")
 	m, _ = feed(m, tea.WindowSizeMsg{Width: 60, Height: 12})
 	m, _ = press(m, "enter")
 	m, _ = deliver(m, rune1('e'))
@@ -739,7 +739,7 @@ func TestCtrlQFromTemplatePickerWithFailingWrite(t *testing.T) {
 
 func TestCtrlQQuitsFromFinderPreviewAndEditor(t *testing.T) {
 	dir := mkdir(t, "a")
-	m := New(dir)
+	m := New(dir, "")
 	if _, quit := press(m, "ctrl+q"); !quit {
 		t.Error("finder: ctrl+q did not quit")
 	}
@@ -763,7 +763,7 @@ func TestViewUsesAltScreen(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "a.md"), []byte("# A\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	m := New(dir)
+	m := New(dir, "")
 	if !m.View().AltScreen {
 		t.Error("finder view is not in the alt screen")
 	}
@@ -783,7 +783,7 @@ func TestViewUsesAltScreen(t *testing.T) {
 func TestCreateWithTagsStartsAfterFrontMatter(t *testing.T) {
 	const created = "---\ntags: [work, meeting]\n---\n"
 	dir := mkdir(t)
-	m := New(dir)
+	m := New(dir, "")
 	m = typed(m, "#work #meeting standup")
 	m, _ = press(m, "enter")
 	if m.mode != modeEdit || m.current == nil || m.current.Name != "standup" {
@@ -799,7 +799,7 @@ func TestCreateWithTagsStartsAfterFrontMatter(t *testing.T) {
 	}
 
 	// The cursor row is the line after the fence right after creation.
-	m = New(dir)
+	m = New(dir, "")
 	m = typed(m, "#work review")
 	m, _ = press(m, "down", "enter")
 	m = typed(m, "x")
@@ -829,7 +829,7 @@ func TestInsertTaggedTemplateIntoBrokenFrontMatter(t *testing.T) {
 		t.Fatal(err)
 	}
 	addTemplates(t, dir, map[string]string{"meeting": "---\ntags: [meeting]\n---\n!\n"}, "meeting")
-	m := New(dir)
+	m := New(dir, "")
 	m, _ = feed(m, tea.WindowSizeMsg{Width: 60, Height: 12})
 	m, _ = press(m, "enter")
 	m, _ = deliver(m, rune1('e'))
@@ -844,5 +844,43 @@ func TestInsertTaggedTemplateIntoBrokenFrontMatter(t *testing.T) {
 	b, _ := os.ReadFile(filepath.Join(dir, "n.md"))
 	if string(b) != "---\ntags: [work\n---\nab!\n" {
 		t.Errorf("n.md = %q", b)
+	}
+}
+
+func TestDirChangeKeepsTheme(t *testing.T) {
+	xdg := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+	m := New(mkdir(t, "a"), "gruvbox_light")
+	m = openPickerFromFinder(t, m)
+	other := mkdir(t, "x")
+	m, _ = press(m, "ctrl+u") // clear the prefilled current directory
+	m = typed(m, other)
+	m, _ = press(m, "enter")
+	if m.mode != modeFinder || m.dir != other {
+		t.Fatalf("mode=%v dir=%q", m.mode, m.dir)
+	}
+	b, err := os.ReadFile(filepath.Join(xdg, "clipt", "config.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `theme = "gruvbox_light"`) || !strings.Contains(string(b), other) {
+		t.Errorf("rewritten config:\n%s", b)
+	}
+}
+
+func TestDirChangeWithoutThemeWritesNone(t *testing.T) {
+	xdg := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+	m := New(mkdir(t, "a"), "")
+	m = openPickerFromFinder(t, m)
+	m, _ = press(m, "ctrl+u")
+	m = typed(m, mkdir(t, "x"))
+	m, _ = press(m, "enter")
+	b, err := os.ReadFile(filepath.Join(xdg, "clipt", "config.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), "theme") {
+		t.Errorf("config without a theme gained one:\n%s", b)
 	}
 }

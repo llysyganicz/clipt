@@ -32,7 +32,8 @@ context: |
   preview hides front matter and shows a tags header. Inserting a template merges its tags into the
   note's front matter line by line; clipt never otherwise rewrites front matter.
   Config: clipt/config.toml under the platform config dir (os.UserConfigDir: XDG on Linux,
-  %AppData% on Windows, ~/Library/Application Support on macOS); single key notes_dir.
+  %AppData% on Windows, ~/Library/Application Support on macOS); keys notes_dir (required) and
+  theme (optional). The picker rewrites the file keeping theme.
   Notes dir chosen in-app via a single path input with ~ expansion on first run or when the
   configured dir is gone; missing dirs are created after a y/n prompt.
   Platforms: Linux, Windows, macOS via platform-neutral std APIs. Development and tests run on
@@ -42,7 +43,13 @@ context: |
   Lip Gloss (styling), BurntSushi/toml (config), goccy/go-yaml (front matter). Fuzzy
   matching is an in-house case-insensitive
   subsequence match that keeps mtime order (no scoring, no library).
-  Theme: gruvbox dark palette, all styles in one theme package; a config override is a later change.
+  Themes: all styles live in one theme package and are derived (theme.Apply, called in main before
+  any model exists) from a Palette: background, foreground, optional selection (defaults to
+  bright_black) and the sixteen ANSI colors, each "#rrggbb". The config key theme names the
+  palette (default gruvbox_dark); lookup is <config dir>/clipt/themes/<name>.toml first, then the
+  two built-ins embedded from internal/ui/theme/builtin (gruvbox_dark, gruvbox_light), which the
+  release archives also ship under themes/. Unknown theme, missing key, bad color or bad TOML is a
+  startup error naming the file. Fenced code is not syntax highlighted (all code is bright_cyan).
   Module path: github.com/llysyganicz/clipt
   VCS: Jujutsu (jj), colocated with git.
   Out of scope: content search, folders, sync, vim normal mode.

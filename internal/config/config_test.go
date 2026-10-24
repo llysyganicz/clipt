@@ -50,13 +50,17 @@ func TestLoad(t *testing.T) {
 		name    string
 		content *string
 		dir     string
+		theme   string
 		status  Status
 		errSub  string
 	}{
 		{name: "no file", status: MissingFile},
 		{name: "empty notes_dir", content: ptr(`notes_dir = ""`), status: EmptyDir},
-		{name: "absent notes_dir", content: ptr(`theme = "dark"`), status: EmptyDir},
-		{name: "unknown keys ignored", content: ptr("notes_dir = \"" + notes + "\"\ntheme = \"dark\"\n"), dir: notes, status: OK},
+		{name: "absent notes_dir", content: ptr(`editor = "vim"`), status: EmptyDir},
+		{name: "unknown keys ignored", content: ptr("notes_dir = \"" + notes + "\"\neditor = \"vim\"\n"), dir: notes, status: OK},
+		{name: "no theme", content: ptr("notes_dir = \"" + notes + "\"\n"), dir: notes, status: OK},
+		{name: "theme", content: ptr("notes_dir = \"" + notes + "\"\ntheme = \"gruvbox_light\"\n"), dir: notes, theme: "gruvbox_light", status: OK},
+		{name: "theme with bad dir", content: ptr("notes_dir = \"" + gone + "\"\ntheme = \"gruvbox_light\"\n"), dir: gone, theme: "gruvbox_light", status: BadDir, errSub: "does not exist"},
 		{name: "path is a file", content: ptr("notes_dir = \"" + file + "\""), dir: file, status: BadDir, errSub: "not a directory"},
 		{name: "path missing", content: ptr("notes_dir = \"" + gone + "\""), dir: gone, status: BadDir, errSub: "does not exist"},
 	}
@@ -66,9 +70,9 @@ func TestLoad(t *testing.T) {
 			if tc.content != nil {
 				writeConfig(t, xdg, *tc.content)
 			}
-			dir, status, err := Load()
-			if dir != tc.dir || status != tc.status {
-				t.Errorf("Load() = (%q, %v), want (%q, %v)", dir, status, tc.dir, tc.status)
+			cfg, status, err := Load()
+			if cfg.NotesDir != tc.dir || cfg.Theme != tc.theme || status != tc.status {
+				t.Errorf("Load() = (%+v, %v), want (%q, %q, %v)", cfg, status, tc.dir, tc.theme, tc.status)
 			}
 			if tc.errSub == "" && err != nil {
 				t.Errorf("unexpected error: %v", err)
@@ -83,14 +87,52 @@ func TestLoad(t *testing.T) {
 func ptr(s string) *string { return &s }
 
 func TestSaveRoundTrip(t *testing.T) {
-	setup(t)
+	xdg := setup(t)
 	notes := t.TempDir()
-	if err := Save(notes); err != nil {
+	if err := Save(Config{NotesDir: notes}); err != nil {
 		t.Fatal(err)
 	}
-	dir, status, err := Load()
-	if err != nil || status != OK || dir != notes {
-		t.Errorf("Load() = (%q, %v, %v), want (%q, OK, nil)", dir, status, err, notes)
+	cfg, status, err := Load()
+	if err != nil || status != OK || cfg != (Config{NotesDir: notes}) {
+		t.Errorf("Load() = (%+v, %v, %v), want (%q, OK, nil)", cfg, status, err, notes)
+	}
+	b, err := os.ReadFile(filepath.Join(xdg, "clipt", "config.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), "theme") {
+		t.Errorf("config without a theme has a theme line:\n%s", b)
+	}
+}
+
+func TestSaveKeepsTheme(t *testing.T) {
+	xdg := setup(t)
+	notes := t.TempDir()
+	writeConfig(t, xdg, "notes_dir = \"/old\"\ntheme = \"gruvbox_light\"\n")
+	cfg, _, _ := Load()
+	cfg.NotesDir = notes
+	if err := Save(cfg); err != nil {
+		t.Fatal(err)
+	}
+	got, status, err := Load()
+	if err != nil || status != OK || got != (Config{NotesDir: notes, Theme: "gruvbox_light"}) {
+		t.Errorf("Load() = (%+v, %v, %v)", got, status, err)
+	}
+	b, _ := os.ReadFile(filepath.Join(xdg, "clipt", "config.toml"))
+	if !strings.Contains(string(b), `theme = "gruvbox_light"`) {
+		t.Errorf("rewritten config lost the theme:\n%s", b)
+	}
+}
+
+func TestDir(t *testing.T) {
+	xdg := setup(t)
+	got, err := Dir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, _ := Path()
+	if want := filepath.Join(xdg, "clipt"); got != want || filepath.Dir(p) != got {
+		t.Errorf("Dir() = %q, want %q (Path() = %q)", got, want, p)
 	}
 }
 
@@ -107,7 +149,7 @@ func TestSaveReadOnlyConfigDir(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("root ignores directory permissions")
 	}
-	if err := Save(t.TempDir()); err == nil {
+	if err := Save(Config{NotesDir: t.TempDir()}); err == nil {
 		t.Error("Save() succeeded on read-only config dir")
 	}
 }

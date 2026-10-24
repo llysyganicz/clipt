@@ -7,22 +7,12 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-var (
-	// LineNumber styles the edit mode's line number gutter.
-	LineNumber = lipgloss.NewStyle().Foreground(lipgloss.Color(gray))
-	// CursorLineNumber styles the gutter on the cursor's line.
-	CursorLineNumber = lipgloss.NewStyle().Foreground(lipgloss.Color(yellow))
-)
-
-// cursorColor is the color of the (virtual) cursor block in every input.
-var cursorColor = lipgloss.Color(fg)
-
 // EditorStyles returns the styles for the edit mode's text area: text in the
 // normal foreground, no cursor line background, no prompt styling (the
-// editor draws its own gutter through the prompt) and the selection on a
-// lighter background with the normal foreground.
+// editor draws its own gutter through the prompt) and the selection on the
+// palette's selection background with the normal foreground.
 func EditorStyles() textarea.Styles {
-	text := lipgloss.NewStyle().Foreground(lipgloss.Color(fg))
+	text := lipgloss.NewStyle().Foreground(lipgloss.Color(current.Foreground))
 	focused := textarea.StyleState{
 		Base:             lipgloss.NewStyle(),
 		CursorLine:       text,
@@ -31,7 +21,7 @@ func EditorStyles() textarea.Styles {
 		LineNumber:       LineNumber,
 		Placeholder:      Hint,
 		Prompt:           lipgloss.NewStyle(),
-		Selection:        lipgloss.NewStyle().Background(lipgloss.Color(bg2)),
+		Selection:        lipgloss.NewStyle().Background(lipgloss.Color(current.Selection)),
 		Text:             text,
 	}
 	blurred := focused

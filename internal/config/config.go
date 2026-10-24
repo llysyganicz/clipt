@@ -36,55 +36,76 @@ func (e *ParseError) Error() string {
 
 func (e *ParseError) Unwrap() error { return e.Err }
 
-type file struct {
-	NotesDir string `toml:"notes_dir"`
+// Config is the content of the config file.
+type Config struct {
+	// NotesDir is the configured notes directory; it may be stale.
+	NotesDir string
+	// Theme names the color theme; empty when the file sets none.
+	Theme string
 }
 
-// Path returns the location of the config file.
-func Path() (string, error) {
+type file struct {
+	NotesDir string `toml:"notes_dir"`
+	Theme    string `toml:"theme,omitempty"`
+}
+
+// Dir returns the clipt config directory, the parent of the config file.
+func Dir() (string, error) {
 	dir, err := os.UserConfigDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "clipt", "config.toml"), nil
+	return filepath.Join(dir, "clipt"), nil
 }
 
-// Load reads the config. It returns the configured notes dir (possibly
-// stale), a status, and an error only for a parse failure or an unexpected
-// I/O failure. For BadDir the error describes why the dir is unusable.
-func Load() (string, Status, error) {
+// Path returns the location of the config file.
+func Path() (string, error) {
+	dir, err := Dir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "config.toml"), nil
+}
+
+// Load reads the config. It returns the configured values (the notes dir
+// possibly stale), a status, and an error only for a parse failure or an
+// unexpected I/O failure. For BadDir the error describes why the dir is
+// unusable.
+func Load() (Config, Status, error) {
 	p, err := Path()
 	if err != nil {
-		return "", MissingFile, err
+		return Config{}, MissingFile, err
 	}
 	var f file
 	if _, err := toml.DecodeFile(p, &f); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return "", MissingFile, nil
+			return Config{}, MissingFile, nil
 		}
 		var perr toml.ParseError
 		if errors.As(err, &perr) {
-			return "", EmptyDir, &ParseError{Path: p, Err: err}
+			return Config{}, EmptyDir, &ParseError{Path: p, Err: err}
 		}
-		return "", EmptyDir, err
+		return Config{}, EmptyDir, err
 	}
+	cfg := Config{NotesDir: f.NotesDir, Theme: f.Theme}
 	if f.NotesDir == "" {
-		return "", EmptyDir, nil
+		return cfg, EmptyDir, nil
 	}
 	info, err := os.Stat(f.NotesDir)
 	switch {
 	case err != nil && errors.Is(err, os.ErrNotExist):
-		return f.NotesDir, BadDir, fmt.Errorf("directory does not exist: %s", f.NotesDir)
+		return cfg, BadDir, fmt.Errorf("directory does not exist: %s", f.NotesDir)
 	case err != nil:
-		return f.NotesDir, BadDir, err
+		return cfg, BadDir, err
 	case !info.IsDir():
-		return f.NotesDir, BadDir, fmt.Errorf("not a directory: %s", f.NotesDir)
+		return cfg, BadDir, fmt.Errorf("not a directory: %s", f.NotesDir)
 	}
-	return f.NotesDir, OK, nil
+	return cfg, OK, nil
 }
 
-// Save writes notes_dir to the config file, creating its directory.
-func Save(dir string) error {
+// Save writes cfg to the config file, creating its directory. The theme key
+// is omitted when cfg.Theme is empty.
+func Save(cfg Config) error {
 	p, err := Path()
 	if err != nil {
 		return err
@@ -96,7 +117,7 @@ func Save(dir string) error {
 	if err != nil {
 		return err
 	}
-	if err := toml.NewEncoder(out).Encode(file{NotesDir: dir}); err != nil {
+	if err := toml.NewEncoder(out).Encode(file{NotesDir: cfg.NotesDir, Theme: cfg.Theme}); err != nil {
 		out.Close()
 		return err
 	}

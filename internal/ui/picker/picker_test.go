@@ -47,12 +47,12 @@ func setup(t *testing.T) {
 func TestEnterExistingDir(t *testing.T) {
 	setup(t)
 	dir := t.TempDir()
-	m := New(Startup, dir, "")
+	m := New(Startup, dir, "", "")
 	_, msg := send(m, "enter")
 	if got, ok := msg.(DirAcceptedMsg); !ok || got.Dir != dir {
 		t.Fatalf("msg = %#v, want DirAcceptedMsg{%q}", msg, dir)
 	}
-	if cfg, status, _ := config.Load(); status != config.OK || cfg != dir {
+	if cfg, status, _ := config.Load(); status != config.OK || cfg.NotesDir != dir {
 		t.Errorf("config = (%q, %v)", cfg, status)
 	}
 }
@@ -61,7 +61,7 @@ func TestEnterFile(t *testing.T) {
 	setup(t)
 	f := filepath.Join(t.TempDir(), "f")
 	os.WriteFile(f, nil, 0o644)
-	m, msg := send(New(Startup, f, ""), "enter")
+	m, msg := send(New(Startup, f, "", ""), "enter")
 	if msg != nil {
 		t.Fatalf("unexpected msg %#v", msg)
 	}
@@ -72,7 +72,7 @@ func TestEnterFile(t *testing.T) {
 
 func TestEmptyInput(t *testing.T) {
 	setup(t)
-	m, msg := send(New(Startup, "", ""), "enter")
+	m, msg := send(New(Startup, "", "", ""), "enter")
 	if msg != nil || !strings.Contains(m.err, "path is required") {
 		t.Errorf("msg = %#v, err = %q", msg, m.err)
 	}
@@ -81,7 +81,7 @@ func TestEmptyInput(t *testing.T) {
 func TestMissingPathConfirmFlow(t *testing.T) {
 	setup(t)
 	dir := filepath.Join(t.TempDir(), "a", "b")
-	m, _ := send(New(Startup, dir, ""), "enter")
+	m, _ := send(New(Startup, dir, "", ""), "enter")
 	if m.state != stateConfirm || !strings.Contains(m.View(), dir) {
 		t.Fatalf("state = %v, view = %q", m.state, m.View())
 	}
@@ -101,13 +101,13 @@ func TestMissingPathConfirmFlow(t *testing.T) {
 	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
 		t.Errorf("directory not created: %v", err)
 	}
-	if cfg, _, _ := config.Load(); cfg != dir {
+	if cfg, _, _ := config.Load(); cfg.NotesDir != dir {
 		t.Errorf("config dir = %q, want %q", cfg, dir)
 	}
 }
 
 func TestEscInInputCancels(t *testing.T) {
-	_, msg := send(New(Finder, "x", ""), "esc")
+	_, msg := send(New(Finder, "x", "", ""), "esc")
 	if _, ok := msg.(PickerCancelledMsg); !ok {
 		t.Errorf("msg = %#v", msg)
 	}
@@ -122,7 +122,7 @@ func TestMkdirFailureKeepsPickerOpen(t *testing.T) {
 	os.Chmod(parent, 0o555)
 	t.Cleanup(func() { os.Chmod(parent, 0o755) })
 	dir := filepath.Join(parent, "notes")
-	m, _ := send(New(Startup, dir, ""), "enter")
+	m, _ := send(New(Startup, dir, "", ""), "enter")
 	m, msg := send(m, "y")
 	if msg != nil || m.state != stateInput || m.err == "" {
 		t.Errorf("msg = %#v, state = %v, err = %q", msg, m.state, m.err)
@@ -143,14 +143,14 @@ func TestConfigSaveFailureKeepsPickerOpen(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", xdg)
 	os.Chmod(xdg, 0o555)
 	t.Cleanup(func() { os.Chmod(xdg, 0o755) })
-	m, msg := send(New(Startup, t.TempDir(), ""), "enter")
+	m, msg := send(New(Startup, t.TempDir(), "", ""), "enter")
 	if msg != nil || m.err == "" {
 		t.Errorf("msg = %#v, err = %q", msg, m.err)
 	}
 }
 
 func TestErrorClearedOnKeypress(t *testing.T) {
-	m := New(Startup, "/x", "boom")
+	m := New(Startup, "/x", "boom", "")
 	m, _ = send(m, "a")
 	if m.err != "" {
 		t.Errorf("err = %q", m.err)
@@ -177,15 +177,15 @@ func run(cmd tea.Cmd) tea.Msg {
 
 func TestCtrlQQuitsFromAnyState(t *testing.T) {
 	setup(t)
-	_, msg := send(New(Finder, "x", ""), "ctrl+q")
+	_, msg := send(New(Finder, "x", "", ""), "ctrl+q")
 	if msg != tea.Msg(tea.QuitMsg{}) {
 		t.Errorf("ctrl+q in the input -> %#v", msg)
 	}
-	if cfg, _, _ := config.Load(); cfg != "" {
+	if cfg, _, _ := config.Load(); cfg.NotesDir != "" {
 		t.Errorf("config written by ctrl+q: %q", cfg)
 	}
 	dir := filepath.Join(t.TempDir(), "a", "b")
-	m, _ := send(New(Startup, dir, ""), "enter")
+	m, _ := send(New(Startup, dir, "", ""), "enter")
 	if m.state != stateConfirm {
 		t.Fatalf("state = %v", m.state)
 	}
@@ -195,7 +195,7 @@ func TestCtrlQQuitsFromAnyState(t *testing.T) {
 	if _, err := os.Stat(dir); err == nil {
 		t.Error("ctrl+q created the directory")
 	}
-	if !strings.Contains(New(Finder, "x", "").View(), "ctrl+q quit") {
+	if !strings.Contains(New(Finder, "x", "", "").View(), "ctrl+q quit") {
 		t.Error("hint lacks ctrl+q")
 	}
 }

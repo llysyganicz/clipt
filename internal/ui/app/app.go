@@ -31,6 +31,7 @@ const (
 type Model struct {
 	mode       mode
 	dir        string
+	theme      string // configured theme name, preserved on config writes
 	current    *notes.Note
 	pickerFrom picker.Origin
 
@@ -43,23 +44,26 @@ type Model struct {
 	height  int
 }
 
-// New starts in the finder over dir.
-func New(dir string) Model {
-	m := Model{mode: modeFinder, dir: dir}
+// New starts in the finder over dir. theme is the configured theme name
+// (possibly empty); it is written back whenever the config is saved.
+func New(dir, theme string) Model {
+	m := Model{mode: modeFinder, dir: dir, theme: theme}
 	m.finder = finder.New(notes.Store{Dir: dir}, nil, "")
 	return m
 }
 
 // NewPicker starts in the picker because no usable directory is configured.
-// prefill and errMsg describe a stale configured path, if any.
-func NewPicker(prefill, errMsg string) Model {
+// prefill and errMsg describe a stale configured path, if any; theme is as
+// for New.
+func NewPicker(prefill, errMsg, theme string) Model {
 	if prefill == "" && errMsg == "" {
 		prefill = picker.DefaultPath
 	}
 	return Model{
 		mode:       modePicker,
+		theme:      theme,
 		pickerFrom: picker.Startup,
-		picker:     picker.New(picker.Startup, prefill, errMsg),
+		picker:     picker.New(picker.Startup, prefill, errMsg, theme),
 	}
 }
 
@@ -137,7 +141,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case finder.ChangeDirMsg:
 		m.pickerFrom = picker.Finder
-		m.picker = picker.New(picker.Finder, m.dir, "")
+		m.picker = picker.New(picker.Finder, m.dir, "", m.theme)
 		m.mode = modePicker
 		return m, m.picker.Init()
 
