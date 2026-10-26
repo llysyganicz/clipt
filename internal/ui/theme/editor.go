@@ -34,12 +34,13 @@ func EditorStyles() textarea.Styles {
 }
 
 // InputStyles returns the styles for every single-line text input: the
-// prompt in the Prompt style, unstyled text in both focus states, hints for
-// placeholder and suggestion text, and the same cursor as the editor.
+// prompt in the Prompt style, typed text in the palette foreground in both
+// focus states, hints for placeholder and suggestion text, and the same
+// cursor as the editor.
 func InputStyles() textinput.Styles {
 	state := textinput.StyleState{
 		Prompt:      Prompt,
-		Text:        lipgloss.NewStyle(),
+		Text:        lipgloss.NewStyle().Foreground(lipgloss.Color(current.Foreground)),
 		Placeholder: Hint,
 		Suggestion:  Hint,
 	}

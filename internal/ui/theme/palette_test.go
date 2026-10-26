@@ -300,8 +300,11 @@ func TestApply(t *testing.T) {
 			t.Errorf("%s foreground = %v, want %s", name, fg, c.want)
 		}
 	}
-	if bg := Normal.GetBackground(); bg != lipgloss.Color(light.Background) {
-		t.Errorf("Normal background = %v, want %s", bg, light.Background)
+	if bg := Normal.GetBackground(); bg != (lipgloss.NoColor{}) {
+		t.Errorf("Normal background = %v, want none", bg)
+	}
+	if Background() != lipgloss.Color(light.Background) || Foreground() != lipgloss.Color(light.Foreground) {
+		t.Errorf("Background() = %v, Foreground() = %v, want %s, %s", Background(), Foreground(), light.Background, light.Foreground)
 	}
 	if sel := EditorStyles().Focused.Selection.GetBackground(); sel != lipgloss.Color(light.Selection) {
 		t.Errorf("selection background = %v, want %s", sel, light.Selection)

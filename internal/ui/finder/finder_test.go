@@ -12,6 +12,7 @@ import (
 
 	"github.com/llysyganicz/clipt/internal/notes"
 	"github.com/llysyganicz/clipt/internal/templates"
+	"github.com/llysyganicz/clipt/internal/ui/theme"
 	"github.com/llysyganicz/clipt/internal/ui/uitest"
 )
 
@@ -176,6 +177,30 @@ func TestViewWithCreateRow(t *testing.T) {
 	}
 	if strings.Contains(v, "No notes yet") {
 		t.Error("hint shown for non-empty directory")
+	}
+}
+
+func TestRowsCarryNoBackground(t *testing.T) {
+	light, err := theme.Load("gruvbox_light", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	dark, err := theme.Load("gruvbox_dark", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { theme.Apply(dark) })
+	theme.Apply(light)
+	v := New(newDir(t, "older", "newer"), nil, "").View()
+	lines := strings.Split(v, "\n")
+	if !strings.Contains(lines[2], "older") || strings.Contains(uitest.Strip(lines[2]), ">") {
+		t.Fatalf("line 2 = %q, want the unselected row", lines[2])
+	}
+	if strings.Contains(lines[2], "48;2;") {
+		t.Errorf("unselected row sets a background: %q", lines[2])
+	}
+	if strings.Contains(lines[1], "48;2;") {
+		t.Errorf("selected row sets a background: %q", lines[1])
 	}
 }
 

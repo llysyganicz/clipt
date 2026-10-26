@@ -14,6 +14,7 @@ import (
 	"github.com/llysyganicz/clipt/internal/ui/finder"
 	"github.com/llysyganicz/clipt/internal/ui/picker"
 	"github.com/llysyganicz/clipt/internal/ui/preview"
+	"github.com/llysyganicz/clipt/internal/ui/theme"
 	"github.com/llysyganicz/clipt/internal/ui/tmpl"
 )
 
@@ -321,10 +322,14 @@ func (m Model) dirAccepted(dir string) (tea.Model, tea.Cmd) {
 }
 
 // View implements tea.Model: the active mode's rendering, in the alternate
-// screen.
+// screen, on the theme's background in its foreground. Bubble Tea sets the
+// terminal colors from the view while the program runs and resets them when
+// it stops.
 func (m Model) View() tea.View {
 	v := tea.NewView(m.content())
 	v.AltScreen = true
+	v.BackgroundColor = theme.Background()
+	v.ForegroundColor = theme.Foreground()
 	return v
 }
 

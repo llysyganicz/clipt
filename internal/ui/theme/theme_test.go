@@ -1,6 +1,7 @@
 package theme
 
 import (
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -70,15 +71,68 @@ func TestInputStyles(t *testing.T) {
 			t.Errorf("%s rendered an empty string", name)
 		}
 	}
-	if s.Blurred.Text.GetForeground() != (lipgloss.NoColor{}) {
-		t.Error("blurred text has a foreground")
-	}
-	if s.Focused.Text.GetForeground() != (lipgloss.NoColor{}) {
-		t.Error("focused text has a foreground")
-	}
 	if s.Cursor.Color == nil {
 		t.Error("cursor has no color")
 	}
+}
+
+// withLight applies gruvbox_light for the test and restores gruvbox_dark
+// after it.
+func withLight(t *testing.T) Palette {
+	t.Helper()
+	light := mustBuiltin("gruvbox_light")
+	t.Cleanup(func() { Apply(mustBuiltin("gruvbox_dark")) })
+	Apply(light)
+	return light
+}
+
+func TestBackgroundForegroundFollowPalette(t *testing.T) {
+	light := withLight(t)
+	if got := Background(); got != lipgloss.Color(light.Background) {
+		t.Errorf("Background() = %v, want %s", got, light.Background)
+	}
+	if got := Foreground(); got != lipgloss.Color(light.Foreground) {
+		t.Errorf("Foreground() = %v, want %s", got, light.Foreground)
+	}
+}
+
+func TestNormalHasNoBackground(t *testing.T) {
+	t.Cleanup(func() { Apply(mustBuiltin("gruvbox_dark")) })
+	for _, name := range Builtin() {
+		p := mustBuiltin(name)
+		Apply(p)
+		out := Normal.Render("x")
+		if !strings.Contains(out, uitestFg(p.Foreground)) {
+			t.Errorf("%s: Normal.Render = %q, lacks foreground %s", name, out, p.Foreground)
+		}
+		if strings.Contains(out, "48;2;") {
+			t.Errorf("%s: Normal.Render = %q, sets a background", name, out)
+		}
+		if Normal.GetBackground() != (lipgloss.NoColor{}) {
+			t.Errorf("%s: Normal has background %v", name, Normal.GetBackground())
+		}
+	}
+}
+
+func TestInputTextUsesForeground(t *testing.T) {
+	light := withLight(t)
+	s := InputStyles()
+	for name, st := range map[string]lipgloss.Style{"focused": s.Focused.Text, "blurred": s.Blurred.Text} {
+		if fg := st.GetForeground(); fg != lipgloss.Color(light.Foreground) {
+			t.Errorf("%s text foreground = %v, want %s", name, fg, light.Foreground)
+		}
+		if out := st.Render("x"); !strings.Contains(out, uitestFg(light.Foreground)) {
+			t.Errorf("%s text renders as %q, want foreground %s", name, out, light.Foreground)
+		}
+	}
+}
+
+// uitestFg returns the SGR parameters that set a truecolor foreground to
+// the "#rrggbb" color hex.
+func uitestFg(hex string) string {
+	var r, g, b int
+	fmt.Sscanf(hex, "#%02x%02x%02x", &r, &g, &b)
+	return fmt.Sprintf("38;2;%d;%d;%d", r, g, b)
 }
 
 func TestNoColorLiteralsOutsideTheme(t *testing.T) {

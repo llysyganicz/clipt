@@ -12,6 +12,7 @@ import (
 
 	"github.com/llysyganicz/clipt/internal/notes"
 	"github.com/llysyganicz/clipt/internal/templates"
+	"github.com/llysyganicz/clipt/internal/ui/theme"
 	"github.com/llysyganicz/clipt/internal/ui/uitest"
 )
 
@@ -377,6 +378,31 @@ func TestViewPicker(t *testing.T) {
 	m, _ = press(m, "down")
 	if v := uitest.Strip(m.View()); !strings.Contains(v, "> daily") || strings.Contains(v, "meeting") {
 		t.Errorf("window did not follow the selection:\n%s", v)
+	}
+}
+
+func TestPickerRowsCarryNoBackground(t *testing.T) {
+	light, err := theme.Load("gruvbox_light", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	dark, err := theme.Load("gruvbox_dark", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { theme.Apply(dark) })
+	theme.Apply(light)
+	m := New(setup(t, []string{"daily", "meeting"}, nil))
+	m, _ = press(m, "i")
+	lines := strings.Split(m.View(), "\n")
+	if uitest.Strip(lines[2]) != "  daily" {
+		t.Fatalf("line 2 = %q, want the unselected row", lines[2])
+	}
+	if strings.Contains(lines[2], "48;2;") {
+		t.Errorf("unselected row sets a background: %q", lines[2])
+	}
+	if strings.Contains(lines[1], "48;2;") {
+		t.Errorf("selected row sets a background: %q", lines[1])
 	}
 }
 

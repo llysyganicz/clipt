@@ -265,14 +265,21 @@ the selected text in edit mode and defaults to `bright_black` when omitted.
 Unknown keys are ignored, so a file with extra entries (say a `cursor` color
 from your terminal's config) loads fine.
 
-The slots are used like this: ordinary text in `foreground`; the finder's
-rows on `background`; the selected row, prompts and the cursor's line number
-in `bright_yellow`; the create row and tags in `bright_cyan`; errors in
-`bright_red`; hints, dimmed tags and line numbers in `bright_black`. In
-rendered markdown, headings and table headers use `bright_yellow`, links and
-code `bright_cyan`, quotes and rules `bright_black`, list markers
-`bright_blue` and ticked task boxes `bright_green`. Fenced code blocks are not
-syntax highlighted.
+While clipt runs it paints the whole terminal screen in the theme's
+`background` and makes `foreground` the default text color, in every mode,
+and restores the terminal's own colors when it exits. Nothing else sets a
+background: rows are drawn straight on the screen, and only the editor's
+selected text sits on `selection`. A terminal or multiplexer that ignores the
+request shows the palette's text colors on its own background instead.
+
+The slots are used like this: ordinary text, including what you type into
+the finder and the directory prompt, in `foreground`; the selected row,
+prompts and the cursor's line number in `bright_yellow`; the create row and
+tags in `bright_cyan`; errors in `bright_red`; hints, dimmed tags and line
+numbers in `bright_black`. In rendered markdown, headings and table headers
+use `bright_yellow`, links and code `bright_cyan`, quotes and rules
+`bright_black`, list markers `bright_blue` and ticked task boxes
+`bright_green`. Fenced code blocks are not syntax highlighted.
 
 A theme that cannot be used stops clipt before it starts, with a message on
 stderr and exit status 1: an unknown name reports the path that was looked

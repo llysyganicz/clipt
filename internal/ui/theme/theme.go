@@ -14,7 +14,9 @@ import (
 )
 
 var (
-	// Normal is the default text style.
+	// Normal is the default text style: the palette foreground and nothing
+	// else. The screen background comes from the root view, so no style
+	// sets a background except the editor selection.
 	Normal lipgloss.Style
 	// Selected styles the highlighted row.
 	Selected lipgloss.Style
@@ -44,14 +46,27 @@ var current Palette
 // cursorColor is the color of the (virtual) cursor block in every input.
 var cursorColor color.Color
 
+// background and foreground are the current palette's screen colors.
+var background, foreground color.Color
+
 func init() { Apply(mustBuiltin(Default)) }
+
+// Background returns the current palette's background: the color the root
+// view paints the whole screen with while clipt runs.
+func Background() color.Color { return background }
+
+// Foreground returns the current palette's foreground: the terminal's
+// default text color while clipt runs.
+func Foreground() color.Color { return foreground }
 
 // Apply rebuilds every style from p. Models capture styles when they are
 // constructed, so call Apply before building any of them.
 func Apply(p Palette) {
 	current = p
 	fg := lipgloss.Color(p.Foreground)
-	Normal = lipgloss.NewStyle().Foreground(fg).Background(lipgloss.Color(p.Background))
+	background = lipgloss.Color(p.Background)
+	foreground = fg
+	Normal = lipgloss.NewStyle().Foreground(fg)
 	Selected = lipgloss.NewStyle().Foreground(lipgloss.Color(p.BrightYellow)).Bold(true)
 	Create = lipgloss.NewStyle().Foreground(lipgloss.Color(p.BrightCyan))
 	Hint = lipgloss.NewStyle().Foreground(lipgloss.Color(p.BrightBlack))

@@ -8,10 +8,12 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/llysyganicz/clipt/internal/notes"
 	"github.com/llysyganicz/clipt/internal/ui/finder"
 	"github.com/llysyganicz/clipt/internal/ui/picker"
+	"github.com/llysyganicz/clipt/internal/ui/theme"
 	"github.com/llysyganicz/clipt/internal/ui/uitest"
 )
 
@@ -778,6 +780,47 @@ func TestViewUsesAltScreen(t *testing.T) {
 	if !strings.Contains(view(m), "# A") {
 		t.Errorf("edit view lacks the note:\n%s", view(m))
 	}
+}
+
+func TestViewPaintsThemeColors(t *testing.T) {
+	light, err := theme.Load("gruvbox_light", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	dark, err := theme.Load("gruvbox_dark", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { theme.Apply(dark) })
+	theme.Apply(light)
+
+	dir := mkdir(t, "a")
+	addTemplates(t, dir, map[string]string{"meeting": "# m\n"}, "meeting")
+	check := func(what string, m Model, want mode) {
+		t.Helper()
+		v := m.View()
+		if m.mode != want {
+			t.Fatalf("%s: mode = %v, want %v", what, m.mode, want)
+		}
+		if v.BackgroundColor != lipgloss.Color(light.Background) {
+			t.Errorf("%s: background = %v, want %s", what, v.BackgroundColor, light.Background)
+		}
+		if v.ForegroundColor != lipgloss.Color(light.Foreground) {
+			t.Errorf("%s: foreground = %v, want %s", what, v.ForegroundColor, light.Foreground)
+		}
+	}
+	m := New(dir, "")
+	check("finder", m, modeFinder)
+	m = openPickerFromFinder(t, m)
+	check("picker", m, modePicker)
+	m, _ = press(m, "esc")
+	check("finder again", m, modeFinder)
+	m, _ = press(m, "enter")
+	check("preview", m, modePreview)
+	m, _ = deliver(m, rune1('e'))
+	check("edit", m, modeEdit)
+	m, _ = press(m, "ctrl+t")
+	check("template picker", m, modeTemplate)
 }
 
 func TestCreateWithTagsStartsAfterFrontMatter(t *testing.T) {
