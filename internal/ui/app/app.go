@@ -5,6 +5,7 @@ package app
 import (
 	"fmt"
 	"path/filepath"
+	"runtime"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -321,11 +322,24 @@ func (m Model) dirAccepted(dir string) (tea.Model, tea.Cmd) {
 	return m, m.finder.Init()
 }
 
+// paintPerCell selects how the root view puts the theme colors on screen.
+// Off, the view asks Bubble Tea to set the terminal's default colors while
+// the program runs and reset them when it stops. On, the view paints every
+// cell of its content itself and leaves the terminal's colors alone. It is
+// on for Windows, whose console host applies the set requests but drops the
+// resets, so the terminal would stay recolored after clipt exits. Tests set
+// it to exercise either path.
+var paintPerCell = runtime.GOOS == "windows"
+
 // View implements tea.Model: the active mode's rendering, in the alternate
-// screen, on the theme's background in its foreground. Bubble Tea sets the
-// terminal colors from the view while the program runs and resets them when
-// it stops.
+// screen, on the theme's background in its foreground, by whichever
+// mechanism paintPerCell selects.
 func (m Model) View() tea.View {
+	if paintPerCell {
+		v := tea.NewView(theme.PaintScreen(m.content(), m.width, m.height))
+		v.AltScreen = true
+		return v
+	}
 	v := tea.NewView(m.content())
 	v.AltScreen = true
 	v.BackgroundColor = theme.Background()

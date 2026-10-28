@@ -49,9 +49,12 @@ context: |
   palette (default gruvbox_dark); lookup is <config dir>/clipt/themes/<name>.toml first, then the
   two built-ins embedded from internal/ui/theme/builtin (gruvbox_dark, gruvbox_light), which the
   release archives also ship under themes/. Unknown theme, missing key, bad color or bad TOML is a
-  startup error naming the file. The root view paints the screen from the palette (tea.View
-  BackgroundColor/ForegroundColor, reset by Bubble Tea on exit); no element except the editor
-  selection sets a background. Fenced code is not syntax highlighted (all code is bright_cyan).
+  startup error naming the file. The root view puts the palette on screen: on Linux and macOS it
+  sets the terminal's default colors (tea.View BackgroundColor/ForegroundColor, reset by Bubble
+  Tea on exit); on Windows, whose console drops the resets, it paints every cell of its content
+  instead (theme.PaintScreen over an ultraviolet screen buffer, chosen by a package-level
+  paintPerCell switch in internal/ui/app) and never changes the terminal's colors. No element
+  except the editor selection sets a background. Fenced code is not syntax highlighted (all code is bright_cyan).
   Module path: github.com/llysyganicz/clipt
   VCS: Jujutsu (jj), colocated with git.
   Out of scope: content search, folders, sync, vim normal mode.

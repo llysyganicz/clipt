@@ -265,12 +265,22 @@ the selected text in edit mode and defaults to `bright_black` when omitted.
 Unknown keys are ignored, so a file with extra entries (say a `cursor` color
 from your terminal's config) loads fine.
 
-While clipt runs it paints the whole terminal screen in the theme's
-`background` and makes `foreground` the default text color, in every mode,
-and restores the terminal's own colors when it exits. Nothing else sets a
-background: rows are drawn straight on the screen, and only the editor's
-selected text sits on `selection`. A terminal or multiplexer that ignores the
-request shows the palette's text colors on its own background instead.
+While clipt runs the whole terminal screen is on the theme's `background`
+and `foreground` is the default text color, in every mode. Nothing else sets
+a background: rows are drawn straight on the screen, and only the editor's
+selected text sits on `selection`. How the colors get there depends on the
+platform:
+
+- On Linux and macOS clipt sets the terminal's own background and foreground
+  colors and restores them when it exits. A terminal or multiplexer that
+  ignores the request shows the palette's text colors on its own background
+  instead.
+- On Windows clipt paints every cell of its screen itself and never changes
+  the terminal's colors, because the console that sits between clipt and the
+  terminal applies the change but drops the request to restore the original
+  colors on exit. A column or row the terminal keeps for itself (one that no
+  program can draw into) shows the terminal's own background rather than the
+  theme's.
 
 The slots are used like this: ordinary text, including what you type into
 the finder and the directory prompt, in `foreground`; the selected row,

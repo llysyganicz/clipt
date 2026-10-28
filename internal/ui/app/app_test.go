@@ -1,6 +1,7 @@
 package app
 
 import (
+	"image/color"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +10,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/llysyganicz/clipt/internal/notes"
 	"github.com/llysyganicz/clipt/internal/ui/finder"
@@ -782,7 +785,33 @@ func TestViewUsesAltScreen(t *testing.T) {
 	}
 }
 
+// withPaintPerCell sets the root view's mechanism for the test.
+func withPaintPerCell(t *testing.T, on bool) {
+	t.Helper()
+	was := paintPerCell
+	t.Cleanup(func() { paintPerCell = was })
+	paintPerCell = on
+}
+
+// withLightTheme applies gruvbox_light for the test and restores gruvbox_dark
+// after it.
+func withLightTheme(t *testing.T) theme.Palette {
+	t.Helper()
+	light, err := theme.Load("gruvbox_light", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	dark, err := theme.Load("gruvbox_dark", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { theme.Apply(dark) })
+	theme.Apply(light)
+	return light
+}
+
 func TestViewPaintsThemeColors(t *testing.T) {
+	withPaintPerCell(t, false)
 	light, err := theme.Load("gruvbox_light", t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -925,5 +954,79 @@ func TestDirChangeWithoutThemeWritesNone(t *testing.T) {
 	}
 	if strings.Contains(string(b), "theme") {
 		t.Errorf("config without a theme gained one:\n%s", b)
+	}
+}
+
+// sameColor reports whether two colors have the same RGBA values.
+func sameColor(a, b color.Color) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	ar, ag, ab, aa := a.RGBA()
+	br, bg, bb, ba := b.RGBA()
+	return ar == br && ag == bg && ab == bb && aa == ba
+}
+
+func TestViewPaintsPerCell(t *testing.T) {
+	withPaintPerCell(t, true)
+	light := withLightTheme(t)
+	const width, height = 60, 12
+
+	dir := mkdir(t, "a")
+	addTemplates(t, dir, map[string]string{"meeting": "# m\n"}, "meeting")
+	check := func(what string, m Model, want mode) {
+		t.Helper()
+		if m.mode != want {
+			t.Fatalf("%s: mode = %v, want %v", what, m.mode, want)
+		}
+		v := m.View()
+		if v.BackgroundColor != nil {
+			t.Errorf("%s: view sets background %v", what, v.BackgroundColor)
+		}
+		if v.ForegroundColor != nil {
+			t.Errorf("%s: view sets foreground %v", what, v.ForegroundColor)
+		}
+		if !v.AltScreen {
+			t.Errorf("%s: view is not in the alt screen", what)
+		}
+		first, _, _ := strings.Cut(v.Content, "\n")
+		line := uv.NewStyledString(first).Lines(ansi.WcWidth)[0]
+		if len(line) != width {
+			t.Fatalf("%s: first line has %d cells, want %d:\n%q", what, len(line), width, first)
+		}
+		for x := range line {
+			if c := line.At(x); !sameColor(c.Style.Bg, lipgloss.Color(light.Background)) {
+				t.Errorf("%s: cell %d background = %v, want %s", what, x, c.Style.Bg, light.Background)
+			}
+		}
+		if got := strings.Count(v.Content, "\n") + 1; got != height {
+			t.Errorf("%s: view has %d lines, want %d", what, got, height)
+		}
+	}
+	m := New(dir, "")
+	m, _ = feed(m, tea.WindowSizeMsg{Width: width, Height: height})
+	check("finder", m, modeFinder)
+	m = openPickerFromFinder(t, m)
+	check("picker", m, modePicker)
+	m, _ = press(m, "esc")
+	check("finder again", m, modeFinder)
+	m, _ = press(m, "enter")
+	check("preview", m, modePreview)
+	m, _ = deliver(m, rune1('e'))
+	check("edit", m, modeEdit)
+	m, _ = press(m, "ctrl+t")
+	check("template picker", m, modeTemplate)
+}
+
+func TestViewPerCellBeforeSizeIsUnpadded(t *testing.T) {
+	withPaintPerCell(t, true)
+	withLightTheme(t)
+	m := New(mkdir(t, "a"), "")
+	v := m.View()
+	if v.Content != m.content() {
+		t.Errorf("content before any window size was changed:\n%q\nwant\n%q", v.Content, m.content())
+	}
+	if v.BackgroundColor != nil || v.ForegroundColor != nil {
+		t.Errorf("view sets terminal colors: bg=%v fg=%v", v.BackgroundColor, v.ForegroundColor)
 	}
 }
